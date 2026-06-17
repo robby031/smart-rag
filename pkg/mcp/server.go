@@ -76,10 +76,13 @@ func (s *SmartRAGServer) registerTools() {
 }
 
 func (s *SmartRAGServer) handleSearchCode(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	query := req.Params.Arguments["query"].(string)
+	query, ok := req.Params.Arguments["query"].(string)
+	if !ok || query == "" {
+		return mcp.NewToolResultText("query is required"), nil
+	}
 	topK := 10
 	if v, ok := req.Params.Arguments["top_k"]; ok {
-		if f, ok := v.(float64); ok {
+		if f, ok := v.(float64); ok && f > 0 {
 			topK = int(f)
 		}
 	}
@@ -100,7 +103,10 @@ func (s *SmartRAGServer) handleSearchCode(ctx context.Context, req mcp.CallToolR
 }
 
 func (s *SmartRAGServer) handleFindDefinition(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	symbol := req.Params.Arguments["symbol"].(string)
+	symbol, ok := req.Params.Arguments["symbol"].(string)
+	if !ok || symbol == "" {
+		return mcp.NewToolResultText("symbol is required"), nil
+	}
 	resp, err := s.engine.Query(ctx, engine.Query{Type: engine.QueryDefinition, Text: symbol})
 	if err != nil {
 		return mcp.NewToolResultText(fmt.Sprintf("definition lookup failed: %v", err)), nil
@@ -109,7 +115,10 @@ func (s *SmartRAGServer) handleFindDefinition(ctx context.Context, req mcp.CallT
 }
 
 func (s *SmartRAGServer) handleFindReferences(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	symbol := req.Params.Arguments["symbol"].(string)
+	symbol, ok := req.Params.Arguments["symbol"].(string)
+	if !ok || symbol == "" {
+		return mcp.NewToolResultText("symbol is required"), nil
+	}
 	resp, err := s.engine.Query(ctx, engine.Query{Type: engine.QueryReferences, Text: symbol})
 	if err != nil {
 		return mcp.NewToolResultText(fmt.Sprintf("references lookup failed: %v", err)), nil
@@ -118,7 +127,10 @@ func (s *SmartRAGServer) handleFindReferences(ctx context.Context, req mcp.CallT
 }
 
 func (s *SmartRAGServer) handleGetCallers(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	fn := req.Params.Arguments["function"].(string)
+	fn, ok := req.Params.Arguments["function"].(string)
+	if !ok || fn == "" {
+		return mcp.NewToolResultText("function is required"), nil
+	}
 	resp, err := s.engine.Query(ctx, engine.Query{Type: engine.QueryCallers, Text: fn})
 	if err != nil {
 		return mcp.NewToolResultText(fmt.Sprintf("callers lookup failed: %v", err)), nil
@@ -127,7 +139,10 @@ func (s *SmartRAGServer) handleGetCallers(ctx context.Context, req mcp.CallToolR
 }
 
 func (s *SmartRAGServer) handleGetCallees(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	fn := req.Params.Arguments["function"].(string)
+	fn, ok := req.Params.Arguments["function"].(string)
+	if !ok || fn == "" {
+		return mcp.NewToolResultText("function is required"), nil
+	}
 	resp, err := s.engine.Query(ctx, engine.Query{Type: engine.QueryCallees, Text: fn})
 	if err != nil {
 		return mcp.NewToolResultText(fmt.Sprintf("callees lookup failed: %v", err)), nil
@@ -136,10 +151,13 @@ func (s *SmartRAGServer) handleGetCallees(ctx context.Context, req mcp.CallToolR
 }
 
 func (s *SmartRAGServer) handleImpactAnalysis(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	symbol := req.Params.Arguments["symbol"].(string)
+	symbol, ok := req.Params.Arguments["symbol"].(string)
+	if !ok || symbol == "" {
+		return mcp.NewToolResultText("symbol is required"), nil
+	}
 	depth := 3
 	if v, ok := req.Params.Arguments["depth"]; ok {
-		if f, ok := v.(float64); ok {
+		if f, ok := v.(float64); ok && f > 0 {
 			depth = int(f)
 		}
 	}
@@ -155,10 +173,13 @@ func (s *SmartRAGServer) handleImpactAnalysis(ctx context.Context, req mcp.CallT
 }
 
 func (s *SmartRAGServer) handleGetContextPack(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	chunkID := req.Params.Arguments["chunk_id"].(string)
+	chunkID, ok := req.Params.Arguments["chunk_id"].(string)
+	if !ok || chunkID == "" {
+		return mcp.NewToolResultText("chunk_id is required"), nil
+	}
 	maxTokens := 0
 	if v, ok := req.Params.Arguments["max_tokens"]; ok {
-		if f, ok := v.(float64); ok {
+		if f, ok := v.(float64); ok && f > 0 {
 			maxTokens = int(f)
 		}
 	}
@@ -174,7 +195,10 @@ func (s *SmartRAGServer) handleGetContextPack(ctx context.Context, req mcp.CallT
 }
 
 func (s *SmartRAGServer) handleReadSnippet(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	location := req.Params.Arguments["location"].(string)
+	location, ok := req.Params.Arguments["location"].(string)
+	if !ok || location == "" {
+		return mcp.NewToolResultText("location is required"), nil
+	}
 	resp, err := s.engine.Query(ctx, engine.Query{
 		Type: engine.QueryReadSnippet,
 		Text: location,
