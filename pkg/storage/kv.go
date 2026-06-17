@@ -78,19 +78,6 @@ func (s *Store) BatchPut(pairs []KVPair) error {
 	})
 }
 
-func (s *Store) PutWithTTL(key, value []byte, ttl time.Duration) error {
-	expiry := time.Now().Add(ttl).UnixNano()
-	entry := make([]byte, 8+len(value))
-	for i := 0; i < 8; i++ {
-		entry[i] = byte(expiry >> (i * 8))
-	}
-	copy(entry[8:], value)
-
-	return s.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte("rag"))
-		return b.Put(key, entry)
-	})
-}
 
 func (s *Store) Delete(key []byte) error {
 	return s.db.Update(func(tx *bbolt.Tx) error {
