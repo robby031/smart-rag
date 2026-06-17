@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/philippgille/chromem-go"
@@ -107,6 +108,15 @@ func (cs *ChunkStore) GetAllByFile(filePath string) ([]*ChunkMeta, error) {
 		}
 		chunks = append(chunks, &meta)
 	}
+	sort.SliceStable(chunks, func(i, j int) bool {
+		if chunks[i].StartLine != chunks[j].StartLine {
+			return chunks[i].StartLine < chunks[j].StartLine
+		}
+		if chunks[i].EndLine != chunks[j].EndLine {
+			return chunks[i].EndLine < chunks[j].EndLine
+		}
+		return chunks[i].ID < chunks[j].ID
+	})
 	return chunks, nil
 }
 
