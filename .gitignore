@@ -8,6 +8,10 @@
 *.so
 *.dylib
 
+# Project binaries
+rag-mcp
+rag-mcp-bench
+
 # Test binary, built with `go test -c`
 *.test
 
@@ -16,6 +20,9 @@
 coverage.*
 *.coverprofile
 profile.cov
+
+# Database / runtime data
+rag-data/
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
