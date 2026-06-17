@@ -189,12 +189,31 @@ func (e *Engine) IndexDir(ctx context.Context, repoDir string, workers int) erro
 				}
 				relPath, _ := filepath.Rel(repoDir, path)
 				if err := e.IndexFile(ctx, relPath, string(src)); err != nil {
+					// Skip files that fail to parse (e.g. build-tag-only files,
+					// intentionally malformed testdata). Hard I/O errors propagate.
+					if strings.HasPrefix(err.Error(), "parse:") {
+						continue
+					}
 					mu.Lock()
 					if firstErr == nil {
 						firstErr = fmt.Errorf("index %s: %w", path, err)
 					}
 					mu.Unlock()
 					return
+				}
+				// Periodic flush: keep pendingChunks bounded in memory.
+				e.pendingMu.Lock()
+				shouldFlush := len(e.pendingChunks) >= 2000
+				e.pendingMu.Unlock()
+				if shouldFlush {
+					if err := e.flushChunks(); err != nil {
+						mu.Lock()
+						if firstErr == nil {
+							firstErr = err
+						}
+						mu.Unlock()
+						return
+					}
 				}
 			}
 		}()
@@ -204,13 +223,23 @@ func (e *Engine) IndexDir(ctx context.Context, repoDir string, workers int) erro
 	return firstErr
 }
 
+func (e *Engine) flushChunks() error {
+	e.pendingMu.Lock()
+	chunks := e.pendingChunks
+	e.pendingChunks = nil
+	e.pendingMu.Unlock()
+	if len(chunks) == 0 {
+		return nil
+	}
+	return e.chunkStore.PutAll(chunks)
+}
+
 func (e *Engine) FinalizeIndex() error {
 	e.bm25.Build()
 	e.sparse.Build()
-	if err := e.chunkStore.PutAll(e.pendingChunks); err != nil {
+	if err := e.flushChunks(); err != nil {
 		return fmt.Errorf("flush chunks: %w", err)
 	}
-	e.pendingChunks = nil
 	if err := e.callGraph.Flush(); err != nil {
 		return fmt.Errorf("flush call graph: %w", err)
 	}

@@ -146,7 +146,10 @@ func WalkFiles(root string, maxFiles int) ([]string, error) {
 		if maxFiles > 0 && len(files) >= maxFiles {
 			return filepath.SkipDir
 		}
-		if !info.IsDir() && strings.HasSuffix(path, ".go") && !strings.Contains(path, "/vendor/") && !strings.Contains(path, "/.") {
+		if info.IsDir() && (info.Name() == "testdata" || info.Name() == "vendor") {
+			return filepath.SkipDir
+		}
+		if !info.IsDir() && strings.HasSuffix(path, ".go") && !strings.Contains(path, "/.") {
 			files = append(files, path)
 		}
 		return nil
