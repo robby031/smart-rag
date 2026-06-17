@@ -6,6 +6,28 @@ RAG-based code intelligence engine with MCP server. Index your codebase and quer
 
 ![smart-rag architecture](docs/architecture.svg)
 
+## Quick Start
+
+### Auto Installation with AI
+
+Copy the setup guide URL and share with your AI assistant:
+```
+https://raw.githubusercontent.com/robby031/smart-rag/main/docs/SETUP_PROMPT.md
+```
+
+Paste this link to Claude, ChatGPT, or any AI and say:
+> "Read this setup guide and help me install smart-rag on my system"
+
+The AI will read the guide and step you through the entire installation process for your device.
+
+---
+
+### Manual Setup
+
+[📖 **Setup Guide for AI Assistants**](docs/SETUP_PROMPT.md) — Step-by-step instructions for all three setup methods.
+
+---
+
 ## Usage
 
 ### Build
