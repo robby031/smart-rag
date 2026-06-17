@@ -2,7 +2,7 @@ BINARY   ?= rag-mcp
 BENCH    ?= rag-mcp-bench
 DB       ?= ./rag-data
 REPO     ?= .
-VERSION  ?= 0.1.0
+VERSION  ?= 0.3.2
 IMAGE    ?= smart-rag
 
 .PHONY: all build bench install run run-full bench-run bench-run-full test clean \
@@ -85,7 +85,7 @@ help:
 	@echo "Variables:"
 	@echo "  REPO=path       Source repository path (default: .)"
 	@echo "  DB=path         Database directory (default: ./rag-data)"
-	@echo "  VERSION=x.y.z   Binary version (default: 0.1.0)"
+	@echo "  VERSION=x.y.z   Binary version (default: 0.3.2)"
 	@echo "  IMAGE=name      Docker image name (default: smart-rag)"
 	@echo ""
 	@echo "Examples:"
