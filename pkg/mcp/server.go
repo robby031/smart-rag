@@ -15,9 +15,13 @@ type SmartRAGServer struct {
 	engine    *engine.Engine
 }
 
-func NewServer(e *engine.Engine) *SmartRAGServer {
+func NewServer(e *engine.Engine, version ...string) *SmartRAGServer {
+	serverVersion := "dev"
+	if len(version) > 0 && version[0] != "" {
+		serverVersion = version[0]
+	}
 	s := &SmartRAGServer{
-		mcpServer: server.NewMCPServer("smart-rag", "0.2.2"),
+		mcpServer: server.NewMCPServer("smart-rag", serverVersion),
 		engine:    e,
 	}
 	s.registerTools()
@@ -29,6 +33,10 @@ func (s *SmartRAGServer) Serve(transport string) error {
 }
 
 func (s *SmartRAGServer) registerTools() {
+	s.mcpServer.AddTool(mcp.NewTool("rag_status",
+		mcp.WithDescription("Show smart-rag health, index, graph, BM25, runtime path, and last sync status."),
+	), s.handleRAGStatus)
+
 	s.mcpServer.AddTool(mcp.NewTool("search_code",
 		mcp.WithDescription("Ranked BM25 code search with deterministic tie-breakers, lightweight boosts, and language/path filters."),
 		mcp.WithString("query", mcp.Required(), mcp.Description("Search query")),
@@ -73,6 +81,10 @@ func (s *SmartRAGServer) registerTools() {
 		mcp.WithDescription("Read a specific code snippet at a given file:line location"),
 		mcp.WithString("location", mcp.Required(), mcp.Description("File:line or file:start-end (e.g. main.go:10-25)")),
 	), s.handleReadSnippet)
+}
+
+func (s *SmartRAGServer) handleRAGStatus(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText(formatStatus(s.engine.Status())), nil
 }
 
 func (s *SmartRAGServer) handleSearchCode(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -235,4 +247,26 @@ func formatResults(resp *engine.Response) string {
 		out.WriteString("\n")
 	}
 	return out.String()
+}
+
+func formatStatus(status engine.Status) string {
+	var out strings.Builder
+	out.WriteString("smart-rag status\n")
+	out.WriteString(fmt.Sprintf("Version: %s\n", valueOrUnavailable(status.Version)))
+	out.WriteString(fmt.Sprintf("Indexed chunks: %d\n", status.IndexedChunks))
+	out.WriteString(fmt.Sprintf("Graph nodes: %d\n", status.GraphNodes))
+	out.WriteString(fmt.Sprintf("Graph edges: %d\n", status.GraphEdges))
+	out.WriteString(fmt.Sprintf("BM25 ready: %t\n", status.BM25Ready))
+	out.WriteString(fmt.Sprintf("BM25 empty: %t\n", status.BM25Empty))
+	out.WriteString(fmt.Sprintf("Repo path: %s\n", valueOrUnavailable(status.RepoDir)))
+	out.WriteString(fmt.Sprintf("DB path: %s\n", valueOrUnavailable(status.DBDir)))
+	out.WriteString(fmt.Sprintf("Last index: %s", valueOrUnavailable(status.LastIndexSummary)))
+	return out.String()
+}
+
+func valueOrUnavailable(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "unavailable"
+	}
+	return value
 }
