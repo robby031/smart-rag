@@ -19,19 +19,21 @@ func receiverType(expr ast.Expr) string {
 }
 
 func extractCallName(call *ast.CallExpr) string {
-	switch fun := call.Fun.(type) {
+	return selectorChain(call.Fun)
+}
+
+func selectorChain(expr ast.Expr) string {
+	switch e := expr.(type) {
 	case *ast.Ident:
-		return fun.Name
+		return e.Name
 	case *ast.SelectorExpr:
-		if id, ok := fun.X.(*ast.Ident); ok {
-			return fmt.Sprintf("%s.%s", id.Name, fun.Sel.Name)
+		x := selectorChain(e.X)
+		if x == "" {
+			return e.Sel.Name
 		}
-		return fun.Sel.Name
+		return x + "." + e.Sel.Name
 	case *ast.IndexExpr:
-		if id, ok := fun.X.(*ast.Ident); ok {
-			return id.Name
-		}
-		return ""
+		return selectorChain(e.X)
 	case *ast.FuncLit:
 		return "<anonymous>"
 	default:
