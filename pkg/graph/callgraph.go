@@ -30,27 +30,24 @@ func (n *Node) ID() string {
 
 // CallGraph uses adjacency lists for O(1) neighbor lookups.
 type CallGraph struct {
-	mu       sync.Mutex
-	Nodes    map[string]*Node
-	OutEdges map[string]map[string]bool // caller -> set of callees
-	InEdges  map[string]map[string]bool // callee -> set of callers
-	EdgeMeta map[string]*edgeMeta       // "caller\x00callee" -> metadata
-	Fset     *token.FileSet
-	store    *storage.GraphStore
-}
-
-type edgeMeta struct {
-	Line int
-	File string
+	mu           sync.Mutex
+	Nodes        map[string]*Node
+	OutEdges     map[string]map[string]bool // caller -> set of callees
+	InEdges      map[string]map[string]bool // callee -> set of callers
+	Fset         *token.FileSet
+	store        *storage.GraphStore
+	dirtyNodes   map[string]bool // node IDs added/changed since last Flush
+	dirtyCallers map[string]bool // callers whose edge set changed since last Flush
 }
 
 func NewCallGraph() *CallGraph {
 	return &CallGraph{
-		Nodes:    make(map[string]*Node),
-		OutEdges: make(map[string]map[string]bool),
-		InEdges:  make(map[string]map[string]bool),
-		EdgeMeta: make(map[string]*edgeMeta),
-		Fset:     token.NewFileSet(),
+		Nodes:        make(map[string]*Node),
+		OutEdges:     make(map[string]map[string]bool),
+		InEdges:      make(map[string]map[string]bool),
+		Fset:         token.NewFileSet(),
+		dirtyNodes:   make(map[string]bool),
+		dirtyCallers: make(map[string]bool),
 	}
 }
 
@@ -65,24 +62,31 @@ func NewPersistentCallGraph(gs *storage.GraphStore) *CallGraph {
 
 func (cg *CallGraph) AddNode(n *Node) {
 	id := n.ID()
-	if _, ok := cg.Nodes[id]; !ok {
+	if existing, ok := cg.Nodes[id]; !ok || *existing != *n {
 		cg.Nodes[id] = n
+		cg.dirtyNodes[id] = true
 	}
 }
 
-func (cg *CallGraph) AddEdge(caller, callee string, line int, file string) {
+func (cg *CallGraph) AddEdge(caller, callee string, _ int, _ string) {
 	if cg.OutEdges[caller] == nil {
 		cg.OutEdges[caller] = make(map[string]bool)
 	}
-	if cg.InEdges[callee] == nil {
-		cg.InEdges[callee] = make(map[string]bool)
-	}
-
 	if !cg.OutEdges[caller][callee] {
 		cg.OutEdges[caller][callee] = true
-		cg.InEdges[callee][caller] = true
-		key := caller + "\x00" + callee
-		cg.EdgeMeta[key] = &edgeMeta{Line: line, File: file}
+		cg.dirtyCallers[caller] = true
+	}
+}
+
+func (cg *CallGraph) BuildInEdges() {
+	cg.InEdges = make(map[string]map[string]bool, len(cg.Nodes))
+	for caller, callees := range cg.OutEdges {
+		for callee := range callees {
+			if cg.InEdges[callee] == nil {
+				cg.InEdges[callee] = make(map[string]bool)
+			}
+			cg.InEdges[callee][caller] = true
+		}
 	}
 }
 
@@ -113,7 +117,11 @@ func (cg *CallGraph) Callers(nodeID string) []string {
 }
 
 func (cg *CallGraph) EdgeCount() int {
-	return len(cg.EdgeMeta)
+	count := 0
+	for _, callees := range cg.OutEdges {
+		count += len(callees)
+	}
+	return count
 }
 
 func (cg *CallGraph) ParseFile(filePath, src string, pkg string) error {
@@ -124,8 +132,6 @@ func (cg *CallGraph) ParseFile(filePath, src string, pkg string) error {
 	return cg.ParseAST(f, cg.Fset, filePath, pkg)
 }
 
-// ParseAST processes an already-parsed AST, avoiding a second parse.
-// fset must be the FileSet that was used to parse f, so position lookups are valid.
 func (cg *CallGraph) ParseAST(f *ast.File, fset *token.FileSet, filePath, pkg string) error {
 	cg.mu.Lock()
 	defer cg.mu.Unlock()
@@ -133,7 +139,7 @@ func (cg *CallGraph) ParseAST(f *ast.File, fset *token.FileSet, filePath, pkg st
 		switch node := n.(type) {
 		case *ast.FuncDecl:
 			cg.processFuncDecl(node, fset, filePath, pkg)
-			return false // processFuncDecl walks fn.Body internally with the correct callerID
+			return false
 		case *ast.CallExpr:
 			cg.processCallExpr(node, fset, filePath)
 		}
@@ -213,35 +219,43 @@ func (cg *CallGraph) TraverseBFS(start string, maxDepth int) []string {
 func (cg *CallGraph) Stats() map[string]int {
 	return map[string]int{
 		"nodes": len(cg.Nodes),
-		"edges": len(cg.EdgeMeta),
+		"edges": cg.EdgeCount(),
 	}
 }
 
-// Flush writes all in-memory nodes and edges to persistent storage in one batch transaction.
 func (cg *CallGraph) Flush() error {
 	if cg.store == nil {
 		return nil
 	}
-	nodes := make([]storage.GraphNode, 0, len(cg.Nodes))
-	for _, n := range cg.Nodes {
-		nodes = append(nodes, storageNode(n))
-	}
-	if err := cg.store.SaveNodeBatch(nodes); err != nil {
-		return err
-	}
-	edges := make([]storage.GraphEdge, 0, len(cg.EdgeMeta))
-	for key, meta := range cg.EdgeMeta {
-		parts := strings.SplitN(key, "\x00", 2)
-		if len(parts) == 2 {
-			edges = append(edges, storage.GraphEdge{
-				Caller: parts[0],
-				Callee: parts[1],
-				Line:   meta.Line,
-				File:   meta.File,
-			})
+	if len(cg.dirtyNodes) > 0 {
+		nodes := make([]storage.GraphNode, 0, len(cg.dirtyNodes))
+		for id := range cg.dirtyNodes {
+			if n, ok := cg.Nodes[id]; ok {
+				nodes = append(nodes, storageNode(n))
+			}
 		}
+		if err := cg.store.SaveNodeBatch(nodes); err != nil {
+			return err
+		}
+		cg.dirtyNodes = make(map[string]bool)
 	}
-	return cg.store.SaveEdgeBatch(edges)
+	if len(cg.dirtyCallers) > 0 {
+		var edgeCount int
+		for caller := range cg.dirtyCallers {
+			edgeCount += len(cg.OutEdges[caller])
+		}
+		edges := make([]storage.GraphEdge, 0, edgeCount)
+		for caller := range cg.dirtyCallers {
+			for callee := range cg.OutEdges[caller] {
+				edges = append(edges, storage.GraphEdge{Caller: caller, Callee: callee})
+			}
+		}
+		if err := cg.store.SaveEdgeBatch(edges); err != nil {
+			return err
+		}
+		cg.dirtyCallers = make(map[string]bool)
+	}
+	return nil
 }
 
 func (cg *CallGraph) SortedNodes() []*Node {
@@ -291,24 +305,22 @@ func (cg *CallGraph) load() {
 		}
 		cg.OutEdges[e.Caller][e.Callee] = true
 		cg.InEdges[e.Callee][e.Caller] = true
-		key := e.Caller + "\x00" + e.Callee
-		cg.EdgeMeta[key] = &edgeMeta{Line: e.Line, File: e.File}
 	}
 }
 
-// --- ImportGraph with adjacency list ---
-
 type ImportGraph struct {
-	mu       sync.Mutex
-	OutEdges map[string]map[string]bool // pkg -> set of deps
-	InEdges  map[string]map[string]bool // dep -> set of pkgs
-	store    *storage.GraphStore
+	mu        sync.Mutex
+	OutEdges  map[string]map[string]bool // pkg -> set of deps
+	InEdges   map[string]map[string]bool // dep -> set of pkgs
+	store     *storage.GraphStore
+	dirtyPkgs map[string]bool // pkgs with new import edges since last Flush
 }
 
 func NewImportGraph() *ImportGraph {
 	return &ImportGraph{
-		OutEdges: make(map[string]map[string]bool),
-		InEdges:  make(map[string]map[string]bool),
+		OutEdges:  make(map[string]map[string]bool),
+		InEdges:   make(map[string]map[string]bool),
+		dirtyPkgs: make(map[string]bool),
 	}
 }
 
@@ -330,7 +342,6 @@ func (ig *ImportGraph) AddFile(pkg, path, src string) error {
 	return ig.AddAST(pkg, f)
 }
 
-// AddAST processes imports from an already-parsed AST, avoiding re-parsing.
 func (ig *ImportGraph) AddAST(pkg string, f *ast.File) error {
 	ig.mu.Lock()
 	defer ig.mu.Unlock()
@@ -348,23 +359,27 @@ func (ig *ImportGraph) AddAST(pkg string, f *ast.File) error {
 				ig.InEdges[importPath] = make(map[string]bool)
 			}
 			ig.InEdges[importPath][pkg] = true
+			ig.dirtyPkgs[pkg] = true
 		}
 	}
 	return nil
 }
 
-// Flush writes all in-memory import edges to persistent storage in one batch transaction.
 func (ig *ImportGraph) Flush() error {
-	if ig.store == nil {
+	if ig.store == nil || len(ig.dirtyPkgs) == 0 {
 		return nil
 	}
 	var pairs [][2]string
-	for pkg, deps := range ig.OutEdges {
-		for dep := range deps {
+	for pkg := range ig.dirtyPkgs {
+		for dep := range ig.OutEdges[pkg] {
 			pairs = append(pairs, [2]string{pkg, dep})
 		}
 	}
-	return ig.store.SaveImportBatch(pairs)
+	if err := ig.store.SaveImportBatch(pairs); err != nil {
+		return err
+	}
+	ig.dirtyPkgs = make(map[string]bool)
+	return nil
 }
 
 func (ig *ImportGraph) Dependencies(pkg string) []string {
@@ -406,8 +421,6 @@ func (ig *ImportGraph) load() {
 		}
 	}
 }
-
-// --- parser helpers ---
 
 func receiverType(expr ast.Expr) string {
 	switch t := expr.(type) {
