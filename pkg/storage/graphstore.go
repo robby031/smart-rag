@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 const (
@@ -132,10 +133,15 @@ func (gs *GraphStore) LoadImports() (map[string]map[string]bool, error) {
 		return nil, err
 	}
 	result := make(map[string]map[string]bool)
-	for key, val := range raw {
+	for key := range raw {
 		// key format: "import:pkg\x00dep"
-		pkg := key[len(importPrefix):]
-		dep := string(val)
+		rest := key[len(importPrefix):]
+		nul := strings.IndexByte(rest, '\x00')
+		if nul < 0 {
+			continue
+		}
+		pkg := rest[:nul]
+		dep := rest[nul+1:]
 		if result[pkg] == nil {
 			result[pkg] = make(map[string]bool)
 		}
