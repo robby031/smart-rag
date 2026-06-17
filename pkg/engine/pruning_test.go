@@ -25,7 +25,7 @@ func TestFinalizeIndexRefreshesChunkReachability(t *testing.T) {
 		"func dead() {}",
 	}, "\n")
 
-	if err := eng.IndexFile(context.Background(), "cmd/app/main.go", src); err != nil {
+	if err := eng.IndexFile(context.Background(), "app/main.go", src); err != nil {
 		t.Fatalf("IndexFile: %v", err)
 	}
 	if err := eng.FinalizeIndex(); err != nil {
@@ -156,6 +156,150 @@ func TestContextPackSkipsUnreachableNearbyChunks(t *testing.T) {
 	}
 	if !strings.Contains(content, "liveNearby") {
 		t.Fatalf("reachable nearby chunk missing from context pack:\n%s", content)
+	}
+}
+
+func TestEntrypointReachabilityIncludesHTTPHandlers(t *testing.T) {
+	eng, closeStore := pruningTestEngine(t)
+	defer closeStore()
+
+	src := strings.Join([]string{
+		"package server",
+		"",
+		"import \"net/http\"",
+		"",
+		"func handleLogin(w http.ResponseWriter, r *http.Request) { validateLogin() }",
+		"",
+		"func validateLogin() {}",
+		"",
+		"func unusedHelper() {}",
+	}, "\n")
+
+	if err := eng.IndexFile(context.Background(), "internal/server/routes.go", src); err != nil {
+		t.Fatalf("IndexFile: %v", err)
+	}
+	if err := eng.FinalizeIndex(); err != nil {
+		t.Fatalf("FinalizeIndex: %v", err)
+	}
+
+	if got := mustChunkBySymbol(t, eng.chunkStore, "handleLogin").Reachability; got != ReachabilityReachable {
+		t.Fatalf("HTTP handler root reachability mismatch: %s", got)
+	}
+	if got := mustChunkBySymbol(t, eng.chunkStore, "validateLogin").Reachability; got != ReachabilityReachable {
+		t.Fatalf("HTTP handler callee reachability mismatch: %s", got)
+	}
+	if got := mustChunkBySymbol(t, eng.chunkStore, "unusedHelper").Reachability; got != ReachabilityUnreachable {
+		t.Fatalf("unused helper reachability mismatch: %s", got)
+	}
+}
+
+func TestEntrypointReachabilityIncludesCLICommands(t *testing.T) {
+	eng, closeStore := pruningTestEngine(t)
+	defer closeStore()
+
+	src := strings.Join([]string{
+		"package cli",
+		"",
+		"func runRoot() { executeUsecase() }",
+		"",
+		"func executeUsecase() {}",
+		"",
+		"func unusedJob() {}",
+	}, "\n")
+
+	if err := eng.IndexFile(context.Background(), "internal/cli/root.go", src); err != nil {
+		t.Fatalf("IndexFile: %v", err)
+	}
+	if err := eng.FinalizeIndex(); err != nil {
+		t.Fatalf("FinalizeIndex: %v", err)
+	}
+
+	if got := mustChunkBySymbol(t, eng.chunkStore, "runRoot").Reachability; got != ReachabilityReachable {
+		t.Fatalf("CLI command root reachability mismatch: %s", got)
+	}
+	if got := mustChunkBySymbol(t, eng.chunkStore, "executeUsecase").Reachability; got != ReachabilityReachable {
+		t.Fatalf("CLI command callee reachability mismatch: %s", got)
+	}
+	if got := mustChunkBySymbol(t, eng.chunkStore, "unusedJob").Reachability; got != ReachabilityUnreachable {
+		t.Fatalf("unused job reachability mismatch: %s", got)
+	}
+}
+
+func TestEntrypointReachabilityMarksExportedTypesReachable(t *testing.T) {
+	eng, closeStore := pruningTestEngine(t)
+	defer closeStore()
+
+	src := strings.Join([]string{
+		"package domain",
+		"",
+		"type PublicConfig struct {",
+		"	Value string",
+		"}",
+		"",
+		"type privateConfig struct {",
+		"	Value string",
+		"}",
+	}, "\n")
+
+	if err := eng.IndexFile(context.Background(), "internal/domain/config.go", src); err != nil {
+		t.Fatalf("IndexFile: %v", err)
+	}
+	if err := eng.FinalizeIndex(); err != nil {
+		t.Fatalf("FinalizeIndex: %v", err)
+	}
+
+	if got := mustChunkBySymbol(t, eng.chunkStore, "PublicConfig").Reachability; got != ReachabilityReachable {
+		t.Fatalf("exported type reachability mismatch: %s", got)
+	}
+	if got := mustChunkBySymbol(t, eng.chunkStore, "privateConfig").Reachability; got != ReachabilityUnknown {
+		t.Fatalf("private type reachability mismatch: %s", got)
+	}
+}
+
+func TestSearchSymbolMatchActsAsQueryReachabilityRoot(t *testing.T) {
+	eng, closeStore := pruningTestEngine(t)
+	defer closeStore()
+
+	src := strings.Join([]string{
+		"package main",
+		"",
+		"func main() {}",
+		"",
+		"func deadRoot() { deadLeaf() }",
+		"",
+		"func deadLeaf() {}",
+	}, "\n")
+
+	if err := eng.IndexFile(context.Background(), "app/main.go", src); err != nil {
+		t.Fatalf("IndexFile: %v", err)
+	}
+	if err := eng.FinalizeIndex(); err != nil {
+		t.Fatalf("FinalizeIndex: %v", err)
+	}
+	if got := mustChunkBySymbol(t, eng.chunkStore, "deadRoot").Reachability; got != ReachabilityUnreachable {
+		t.Fatalf("baseline deadRoot reachability mismatch: %s", got)
+	}
+
+	resp, err := eng.Query(context.Background(), Query{
+		Type: QuerySearch,
+		Text: "deadRoot",
+		TopK: 3,
+	})
+	if err != nil {
+		t.Fatalf("Query search: %v", err)
+	}
+	if len(resp.Results) == 0 {
+		t.Fatal("expected search results")
+	}
+	if got, want := resp.Results[0].Chunk.SymbolName, "deadRoot"; got != want {
+		t.Fatalf("expected query root result first: want %s, got %s", want, got)
+	}
+	details := strings.Join(resp.Results[0].Related, "\n")
+	if strings.Contains(details, "penalty reachability=unreachable") {
+		t.Fatalf("query root should skip unreachable penalty, got details: %v", resp.Results[0].Related)
+	}
+	if !strings.Contains(details, "query_reachable_root=skip_unreachable_penalty") {
+		t.Fatalf("expected query reachability explanation, got %v", resp.Results[0].Related)
 	}
 }
 
