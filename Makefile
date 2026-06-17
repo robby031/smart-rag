@@ -4,6 +4,7 @@ DB       ?= ./rag-data
 REPO     ?= .
 VERSION  ?= 0.3.2
 IMAGE    ?= smart-rag
+PRUNING  ?= soft
 
 .PHONY: all build bench install run run-full bench-run bench-run-full test clean \
         docker-build docker-index docker-run docker-restart help
@@ -20,16 +21,16 @@ bench:           ; @echo "Build benchmark binary → $(BENCH)"
 	go build -ldflags="-s -w -X main.version=$(VERSION)" -o $(BENCH) ./cmd/bench
 
 run: build        ; @echo "Run MCP server (incremental index)"
-	./$(BINARY) --repo "$(REPO)" --db "$(DB)"
+	./$(BINARY) --repo "$(REPO)" --db "$(DB)" --pruning "$(PRUNING)"
 
 run-full: build   ; @echo "Run MCP server (full re-index)"
-	./$(BINARY) --repo "$(REPO)" --db "$(DB)" --full
+	./$(BINARY) --repo "$(REPO)" --db "$(DB)" --full --pruning "$(PRUNING)"
 
 bench-run: bench  ; @echo "Run benchmark (incremental)"
-	./$(BENCH) --repo "$(REPO)" --db "$(DB)"
+	./$(BENCH) --repo "$(REPO)" --db "$(DB)" --pruning "$(PRUNING)"
 
 bench-run-full: bench ; @echo "Run benchmark (full re-index)"
-	./$(BENCH) --repo "$(REPO)" --db "$(DB)" --full
+	./$(BENCH) --repo "$(REPO)" --db "$(DB)" --full --pruning "$(PRUNING)"
 
 install: build
 	@echo "Install $(BINARY) to GOBIN..."
