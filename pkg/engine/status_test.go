@@ -24,7 +24,7 @@ func TestStatusReportsRuntimeIndexGraphAndBM25(t *testing.T) {
 		callGraph: cg,
 	}
 	eng.SetRuntimeInfo(RuntimeInfo{
-		Version: "0.3.2",
+		Version: "0.3.3",
 		RepoDir: "/repo",
 		DBDir:   "/db",
 	})
@@ -36,7 +36,7 @@ func TestStatusReportsRuntimeIndexGraphAndBM25(t *testing.T) {
 	})
 
 	status := eng.Status()
-	if status.Version != "0.3.2" {
+	if status.Version != "0.3.3" {
 		t.Fatalf("version mismatch: %s", status.Version)
 	}
 	if status.RepoDir != "/repo" || status.DBDir != "/db" {

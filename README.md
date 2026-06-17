@@ -188,7 +188,7 @@ make clean        # Remove artifacts
 - `REPO=path` — source repository (default: `.`)
 - `DB=path` — database directory (default: `./rag-data`)
 - `PRUNING=off|soft|hard` — index pruning mode (default: `soft`)
-- `VERSION=x.y.z` — binary version (default: `0.3.2`)
+- `VERSION=x.y.z` — binary version (default: `0.3.3`)
 
 `--pruning` maps to the index pruning setting `index.pruning.mode`.
 
