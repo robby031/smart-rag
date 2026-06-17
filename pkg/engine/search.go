@@ -21,9 +21,15 @@ func (e *Engine) search(_ context.Context, q Query, resp *Response) (*Response, 
 		topK = 10
 	}
 
-	fetchK := topK * 5
-	if fetchK < 50 {
-		fetchK = 50
+	fetchK := topK
+	if q.Language != "" || q.File != "" {
+		fetchK = topK * 5
+		if fetchK < 50 {
+			fetchK = 50
+		}
+	}
+	if fetchK < topK {
+		fetchK = topK
 	}
 
 	var candidates []Result
