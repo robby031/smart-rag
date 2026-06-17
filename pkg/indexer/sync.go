@@ -135,7 +135,8 @@ func (s *Syncer) hashCompare() (changed, deleted []string, err error) {
 			return nil
 		}
 		if info.IsDir() {
-			if info.Name()[0] == '.' && info.Name() != "." {
+			name := info.Name()
+			if name == "vendor" || name == "testdata" || (name != "." && name[0] == '.') {
 				return filepath.SkipDir
 			}
 			return nil
