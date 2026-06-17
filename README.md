@@ -2,6 +2,10 @@
 
 RAG-based code intelligence engine with MCP server. Index your codebase and query it via natural language, symbol search, call graph, and impact analysis.
 
+## Architecture
+
+![smart-rag architecture](docs/architecture.svg)
+
 ## Usage
 
 ### Build
