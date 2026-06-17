@@ -49,7 +49,7 @@ func main() {
 
 	eng := engine.New(kvStore, chunkStore, vectorDB, graphStore)
 
-	// ── Phase 1: Full or incremental index ────────────────────────────────────
+	// Full or incremental index
 	var (
 		indexedCount int
 		peakHeapMB   float64
@@ -66,7 +66,10 @@ func main() {
 		if err := eng.IndexDir(context.Background(), absRepo, 0); err != nil {
 			log.Fatal(err)
 		}
-		// Capture peak heap after building in-memory structures, before flush.
+		// Two GC passes: first collects the main garbage, second collects
+		// finalizer-triggered objects and inter-generational references.
+		runtime.GC()
+		runtime.GC()
 		var memPeak runtime.MemStats
 		runtime.ReadMemStats(&memPeak)
 		if memPeak.HeapInuse > memBefore.HeapInuse {
@@ -94,7 +97,7 @@ func main() {
 		projected = time.Duration(float64(elapsed) * 1000.0 / float64(indexedCount))
 	}
 
-	// ── Phase 2: Incremental re-index (1 file) ────────────────────────────────
+	// Incremental re-index (1 file)
 	var incrElapsed time.Duration
 	if *fullReindex {
 		paths, _ := searcher.WalkFiles(absRepo, 0)
@@ -108,7 +111,7 @@ func main() {
 		}
 	}
 
-	// ── Phase 3: Query latency (search + definition + callers) ────────────────
+	// Query latency (search + definition + callers)
 	ctx := context.Background()
 	nChunks := s["chunks"]
 
@@ -124,13 +127,13 @@ func main() {
 		eng.Query(ctx, engine.Query{Type: engine.QueryCallers, Text: term}) //nolint
 	}, []string{"ParseFile", "IndexFile", "AddNode", "Flush"}, 20)
 
-	// ── Phase 4: Binary size ──────────────────────────────────────────────────
+	// Binary size
 	var binarySizeMB float64
 	if info, err := os.Stat(os.Args[0]); err == nil {
 		binarySizeMB = float64(info.Size()) / 1024 / 1024
 	}
 
-	// ── Output ────────────────────────────────────────────────────────────────
+	// Output
 	fmt.Println()
 	fmt.Println("smart-rag performance matrix")
 	fmt.Println("================================")
@@ -196,9 +199,6 @@ func main() {
 		fmt.Printf("  RAM during index             < 80-120 MB  (run --full to measure)\n")
 	}
 
-	// Query 100k projection — linear extrapolation from current query latency.
-	// Inverted-index queries scale with matching postings, not total docs,
-	// so this is a conservative (pessimistic) estimate.
 	if nChunks > 0 && smed > 0 {
 		proj100k := time.Duration(float64(smed) * 100_000 / float64(nChunks))
 		p100kStatus := statusIcon(proj100k, 40*time.Millisecond, 100*time.Millisecond)
@@ -209,7 +209,6 @@ func main() {
 	fmt.Println()
 }
 
-// benchQueries runs fn(term) for each term × repsPerTerm, returns all durations.
 func benchQueries(fn func(string), terms []string, repsPerTerm int) []time.Duration {
 	out := make([]time.Duration, 0, len(terms)*repsPerTerm)
 	for _, term := range terms {
