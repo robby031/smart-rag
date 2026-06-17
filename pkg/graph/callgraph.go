@@ -34,7 +34,6 @@ type CallGraph struct {
 	InEdges  map[string]map[string]bool // callee -> set of callers
 	EdgeMeta map[string]*edgeMeta       // "caller\x00callee" -> metadata
 	Fset     *token.FileSet
-	CurPkg   string
 	store    *storage.GraphStore
 }
 
@@ -132,32 +131,32 @@ func (cg *CallGraph) ParseFile(filePath, src string, pkg string) error {
 	if err != nil {
 		return fmt.Errorf("parse %s: %w", filePath, err)
 	}
-	return cg.ParseAST(f, filePath, pkg)
+	return cg.ParseAST(f, cg.Fset, filePath, pkg)
 }
 
 // ParseAST processes an already-parsed AST, avoiding a second parse.
-func (cg *CallGraph) ParseAST(f *ast.File, filePath, pkg string) error {
-	cg.CurPkg = pkg
+// fset must be the FileSet that was used to parse f, so position lookups are valid.
+func (cg *CallGraph) ParseAST(f *ast.File, fset *token.FileSet, filePath, pkg string) error {
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.FuncDecl:
-			cg.processFuncDecl(node, filePath)
+			cg.processFuncDecl(node, fset, filePath, pkg)
 		case *ast.CallExpr:
-			cg.processCallExpr(node, filePath)
+			cg.processCallExpr(node, fset, filePath)
 		}
 		return true
 	})
 	return nil
 }
 
-func (cg *CallGraph) processFuncDecl(fn *ast.FuncDecl, filePath string) {
-	pos := cg.Fset.Position(fn.Pos())
+func (cg *CallGraph) processFuncDecl(fn *ast.FuncDecl, fset *token.FileSet, filePath, pkg string) {
+	pos := fset.Position(fn.Pos())
 	recv := ""
 	if fn.Recv != nil && len(fn.Recv.List) > 0 {
 		recv = receiverType(fn.Recv.List[0].Type)
 	}
 	node := &Node{
-		Pkg:  cg.CurPkg,
+		Pkg:  pkg,
 		Name: fn.Name.Name,
 		Recv: recv,
 		File: filePath,
@@ -174,7 +173,7 @@ func (cg *CallGraph) processFuncDecl(fn *ast.FuncDecl, filePath string) {
 			}
 			calleeID := extractCallName(call)
 			if calleeID != "" && calleeID != callerID {
-				callPos := cg.Fset.Position(call.Pos())
+				callPos := fset.Position(call.Pos())
 				cg.AddEdge(callerID, calleeID, callPos.Line, filePath)
 			}
 			return false
@@ -182,10 +181,10 @@ func (cg *CallGraph) processFuncDecl(fn *ast.FuncDecl, filePath string) {
 	}
 }
 
-func (cg *CallGraph) processCallExpr(call *ast.CallExpr, filePath string) {
+func (cg *CallGraph) processCallExpr(call *ast.CallExpr, fset *token.FileSet, filePath string) {
 	calleeID := extractCallName(call)
 	if calleeID != "" {
-		pos := cg.Fset.Position(call.Pos())
+		pos := fset.Position(call.Pos())
 		cg.AddEdge(":<package-init>", calleeID, pos.Line, filePath)
 	}
 }

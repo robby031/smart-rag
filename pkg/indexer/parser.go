@@ -44,6 +44,8 @@ func NewParser() *Parser {
 	return &Parser{fset: token.NewFileSet()}
 }
 
+func (p *Parser) FileSet() *token.FileSet { return p.fset }
+
 // ParseFile parses a file and returns the AST, declarations, and metadata.
 func (p *Parser) ParseFile(filePath, src string) (*ast.File, []ParsedDecl, FileInfo, error) {
 	f, err := parser.ParseFile(p.fset, filePath, src, parser.ParseComments)

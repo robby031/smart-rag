@@ -135,7 +135,7 @@ func (e *Engine) IndexFile(ctx context.Context, filePath, src string) error {
 		}
 	}
 
-	if err := e.callGraph.ParseAST(astFile, filePath, fileInfo.Package); err != nil {
+	if err := e.callGraph.ParseAST(astFile, e.parser.FileSet(), filePath, fileInfo.Package); err != nil {
 		return fmt.Errorf("callgraph: %w", err)
 	}
 	if err := e.importGraph.AddAST(fileInfo.Package, astFile); err != nil {
