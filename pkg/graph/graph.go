@@ -17,8 +17,6 @@ func NewGraph(cg *CallGraph, ig *ImportGraph) *Graph {
 	return &Graph{callGraph: cg, importGraph: ig}
 }
 
-// --- Call graph queries ---
-
 // Callers returns all functions that call the given function ID.
 func (g *Graph) Callers(funcID string) []string {
 	return g.callGraph.Callers(funcID)
@@ -29,8 +27,6 @@ func (g *Graph) Callees(funcID string) []string {
 	return g.callGraph.Callees(funcID)
 }
 
-// --- Import graph queries ---
-
 // Importers returns packages that import the given package path.
 func (g *Graph) Importers(pkgPath string) []string {
 	return g.importGraph.Dependents(pkgPath)
@@ -40,8 +36,6 @@ func (g *Graph) Importers(pkgPath string) []string {
 func (g *Graph) Dependencies(pkg string) []string {
 	return g.importGraph.Dependencies(pkg)
 }
-
-// --- Impact analysis (blast radius) ---
 
 // ImpactResult describes one node in the impact chain.
 type ImpactResult struct {
@@ -116,7 +110,6 @@ func (g *Graph) ImpactBackward(start string, maxDepth int) []ImpactResult {
 	return results
 }
 
-// ImpactFull returns both upstream and downstream impact in one call.
 func (g *Graph) ImpactFull(start string, maxDepth int) []ImpactResult {
 	var results []ImpactResult
 	results = append(results, g.ImpactForward(start, maxDepth)...)
@@ -124,7 +117,6 @@ func (g *Graph) ImpactFull(start string, maxDepth int) []ImpactResult {
 	return results
 }
 
-// PackageImpact finds all packages affected by a change to the given package.
 func (g *Graph) PackageImpact(pkg string, maxDepth int) []ImpactResult {
 	visited := make(map[string]bool)
 	var results []ImpactResult
@@ -155,8 +147,6 @@ func (g *Graph) PackageImpact(pkg string, maxDepth int) []ImpactResult {
 	return results
 }
 
-// --- Xref (cross-references) ---
-
 // XrefResult holds all cross-references for a symbol.
 type XrefResult struct {
 	Symbol      string   `json:"symbol"`
@@ -172,11 +162,10 @@ type XrefResult struct {
 func (g *Graph) Xref(symbol string) *XrefResult {
 	r := &XrefResult{Symbol: symbol}
 
-	// Check if it's a call graph node
 	if node, ok := g.callGraph.Nodes[symbol]; ok {
 		r.Definitions = append(r.Definitions, fmt.Sprintf("%s (%s:%d)", node.ID(), node.File, node.Line))
 	}
-	// If symbol doesn't match a full ID, try matching by name across all nodes
+
 	if len(r.Definitions) == 0 {
 		for _, n := range g.callGraph.SortedNodes() {
 			if n.Name == symbol || strings.Contains(n.ID(), symbol) {
@@ -189,14 +178,12 @@ func (g *Graph) Xref(symbol string) *XrefResult {
 	r.Callees = g.callGraph.Callees(symbol)
 	r.ImportedBy = g.importGraph.Dependents(symbol)
 
-	// Collect all references: callers + importers
 	r.References = append(r.References, r.Callers...)
 	r.References = append(r.References, r.ImportedBy...)
 
 	return r
 }
 
-// SearchSymbol finds call graph nodes matching the query by name/package.
 func (g *Graph) SearchSymbol(query string) []*Node {
 	var results []*Node
 	for _, n := range g.callGraph.Nodes {
@@ -211,6 +198,3 @@ func (g *Graph) SearchSymbol(query string) []*Node {
 	})
 	return results
 }
-
-// --- Graph summary ---
-
