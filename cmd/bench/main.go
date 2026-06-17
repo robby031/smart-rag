@@ -24,6 +24,7 @@ func main() {
 	repoDir := flag.String("repo", ".", "Path to the code repository")
 	dbDir := flag.String("db", "./rag-data", "Path to the RAG database")
 	fullReindex := flag.Bool("full", false, "Force full re-index")
+	pruningMode := flag.String("pruning", string(engine.PruningModeSoft), "Index pruning mode: off, soft, or hard")
 	flag.Parse()
 
 	absRepo, _ := filepath.Abs(*repoDir)
@@ -48,6 +49,13 @@ func main() {
 	}
 
 	eng := engine.New(kvStore, chunkStore, vectorDB, graphStore)
+	mode, err := engine.ParsePruningMode(*pruningMode)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := eng.SetPruningMode(mode); err != nil {
+		log.Fatal(err)
+	}
 
 	// Full or incremental index
 	var (
