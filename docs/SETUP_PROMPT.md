@@ -1,36 +1,36 @@
 # Smart RAG Setup Guide
 
-**Purpose:** Pemandu untuk AI assistant membantu user install smart-rag secara mandiri.
+**Purpose:** Guide for AI assistants to help users install smart-rag independently.
 
 ---
 
-## Penjelasan Singkat
+## Overview
 
-Smart RAG adalah code intelligence engine berbasis RAG (Retrieval-Augmented Generation) yang meng-index codebase dan menyediakan MCP tools untuk Claude Desktop / Claude Code. Dengan smart-rag, user bisa:
-- Search code dengan natural language (BM25 + sparse vector)
-- Go-to-definition (find_definition)
-- Find semua referensi symbol (find_references)
+Smart RAG is a code intelligence engine based on RAG (Retrieval-Augmented Generation) that indexes your codebase and provides MCP tools for Claude Desktop / Claude Code. With smart-rag, you can:
+- Search code with natural language (BM25 + sparse vector)
+- Go-to-definition for symbols (find_definition)
+- Find all references of a symbol (find_references)
 - Explore call graph (get_callers / get_callees)
-- Impact analysis (blast radius dari perubahan)
-- Read code snippet by file:line
+- Impact analysis (blast radius of changes)
+- Read code snippets by file:line
 
-Smart RAG berjalan sebagai MCP server yang berkomunikasi via JSON-RPC pada stdio.
+Smart RAG runs as an MCP server that communicates via JSON-RPC on stdio.
 
 ---
 
 ## Prerequisites
 
-Pilih salah satu setup method sesuai kenyamanan user:
+Choose one setup method based on your preference:
 
 ### Method 1: Docker via GHCR (Recommended - No build required)
 - Docker installed (`docker --version`)
-- Docker can run containers dengan volume mount
-- Repository path user (lokal atau remote)
+- Docker can run containers with volume mounts
+- Path to your repository (local or remote)
 
 ### Method 2: Docker Build Locally
 - Docker installed
 - Git installed
-- Repository path user
+- Path to your repository
 
 ### Method 3: Binary Without Docker
 - Go 1.23+ installed (`go version`)
@@ -48,16 +48,16 @@ Pilih salah satu setup method sesuai kenyamanan user:
 docker pull ghcr.io/robby031/smart-rag:latest
 ```
 
-**Step 2: Index repository (first time)**
+**Step 2: Index your repository (first time)**
 ```bash
-# Ganti /path/to/your/project dengan path actual user
+# Replace /path/to/your/project with actual path
 docker run --rm \
   -v "/path/to/your/project:/repo:ro" \
   -v "smart-rag-data:/data" \
   ghcr.io/robby031/smart-rag:latest --repo=/repo --db=/data --full
 ```
 
-Output akan menampilkan:
+Output will display:
 ```
 Full re-indexing repository: /repo
 Chunks: XXX
@@ -67,20 +67,20 @@ Incremental indexing: XXX files indexed
 Starting smart-rag MCP server...
 ```
 
-Jika error "bind: address already in use", stop container lama:
+If error "bind: address already in use", stop lingering container:
 ```bash
 docker stop smart-rag
 docker rm smart-rag
 ```
 
-**Step 3: Add ke Claude Desktop**
+**Step 3: Add to Claude Desktop**
 
-Buka atau create file:
+Open or create file:
 ```
 ~/Library/Application Support/Claude/claude_desktop_config.json
 ```
 
-Tambahkan / update `mcpServers` section (ganti path):
+Add/update `mcpServers` section (replace path):
 ```json
 {
   "mcpServers": {
@@ -99,9 +99,9 @@ Tambahkan / update `mcpServers` section (ganti path):
 
 Restart Claude Desktop.
 
-**Step 4: Add ke Claude Code**
+**Step 4: Add to Claude Code**
 
-Buat / update file `.mcp.json` di project root (ganti path):
+Create/update `.mcp.json` in project root (replace path):
 ```json
 {
   "mcpServers": {
@@ -120,7 +120,7 @@ Buat / update file `.mcp.json` di project root (ganti path):
 
 Restart Claude Code / refresh MCP connection.
 
-**Update image ke latest:**
+**Update image to latest:**
 ```bash
 docker pull ghcr.io/robby031/smart-rag:latest
 ```
@@ -129,7 +129,7 @@ docker pull ghcr.io/robby031/smart-rag:latest
 
 ### Method 2: Docker Build Locally
 
-**Step 1: Clone repo**
+**Step 1: Clone repository**
 ```bash
 git clone https://github.com/robby031/smart-rag.git
 cd smart-rag
@@ -141,23 +141,23 @@ make docker-build
 # Output: smart-rag:latest (13.2 MB)
 ```
 
-**Step 3: Index repo**
+**Step 3: Index your repository**
 ```bash
 make docker-index REPO=/path/to/your/project
 ```
 
-**Step 4: Configure MCP** (sama seperti Method 1)
+**Step 4: Configure MCP** (same as Method 1)
 
-Update config file, ganti image URL dari:
+Update config file, replace image URL from:
 ```
 ghcr.io/robby031/smart-rag:latest
 ```
-ke:
+to:
 ```
 smart-rag:latest
 ```
 
-**Step 5: Rebuild after update**
+**Step 5: Rebuild after updating**
 ```bash
 make docker-restart REPO=/path/to/your/project
 ```
@@ -166,7 +166,7 @@ make docker-restart REPO=/path/to/your/project
 
 ### Method 3: Binary Without Docker
 
-**Step 1: Clone repo**
+**Step 1: Clone repository**
 ```bash
 git clone https://github.com/robby031/smart-rag.git
 cd smart-rag
@@ -178,7 +178,7 @@ make build
 # Output: ./rag-mcp (binary)
 ```
 
-**Step 3: Index repo**
+**Step 3: Index your repository**
 ```bash
 ./rag-mcp --repo=/path/to/your/project --db=./rag-data --full
 ```
@@ -186,12 +186,12 @@ make build
 **Step 4: Install to GOBIN**
 ```bash
 make install
-# Binary akan tersedia di $GOBIN/rag-mcp
+# Binary available at $GOBIN/rag-mcp
 ```
 
 **Step 5: Configure MCP**
 
-Add ke Claude Desktop / Claude Code config:
+Add to Claude Desktop / Claude Code config:
 ```json
 {
   "mcpServers": {
@@ -207,20 +207,20 @@ Add ke Claude Desktop / Claude Code config:
 
 ## Verification
 
-Setelah setup, test di Claude Desktop:
+After setup, test in Claude Desktop:
 
-1. Buka Chat
-2. Klik icon tools di bottom → Smart RAG tools akan visible
-3. Coba query:
-   - `search_code`: "search keyword dalam codebase"
-   - `find_definition`: "nama function yang cari definisinya"
+1. Open Chat
+2. Click tools icon at bottom → Smart RAG tools will be visible
+3. Try queries:
+   - `search_code`: "keyword search in codebase"
+   - `find_definition`: "function name to find definition"
    - `get_callers`: "function ID"
    - `impact_analysis`: "function/package name"
 
-Jika tools tidak muncul, cek:
-- Config file syntax valid JSON (gunakan jsonlint)
-- Path `/path/to/your/project` correct dan readable
-- Docker image tersedia: `docker images | grep smart-rag`
+If tools don't appear, check:
+- Config file has valid JSON (use jsonlint)
+- Path `/path/to/your/project` is correct and readable
+- Docker image available: `docker images | grep smart-rag`
 - Container logs: `docker logs smart-rag`
 
 ---
@@ -228,19 +228,19 @@ Jika tools tidak muncul, cek:
 ## Troubleshooting
 
 ### Error: "bind: address already in use"
-**Solusi:** Ada container lama masih running.
+**Solution:** Old container still running.
 ```bash
 docker ps | grep smart-rag
 docker stop <container-id>
 ```
 
 ### Error: "Unexpected token 'I', 'Incrementa'... is not valid JSON"
-**Sebab:** stdout terkontaminasi output non-JSON.
-**Solusi:** Pastikan version terbaru (`docker pull ghcr.io/robby031/smart-rag:latest`).
+**Cause:** stdout contaminated with non-JSON output.
+**Solution:** Ensure latest version (`docker pull ghcr.io/robby031/smart-rag:latest`).
 
 ### Error: "chunk not found" / "file not found"
-**Sebab:** Re-indexing belum selesai atau path wrong.
-**Solusi:** Jalankan index ulang:
+**Cause:** Re-indexing incomplete or path incorrect.
+**Solution:** Run indexing again:
 ```bash
 # Method 1 (GHCR)
 docker run --rm -v "/path:/repo:ro" -v "smart-rag-data:/data" \
@@ -253,19 +253,19 @@ make docker-restart REPO=/path/to/project
 ./rag-mcp --repo=/path/to/project --db=./rag-data --full
 ```
 
-### MCP tools tidak muncul di Claude
-**Solusi:**
-1. Verify config JSON valid
-2. Restart Claude completely (close dan reopen)
-3. Check MCP connection: lihat preferences → Features → Model context protocol
+### MCP tools not appearing in Claude
+**Solution:**
+1. Verify config JSON is valid
+2. Restart Claude completely (close and reopen)
+3. Check MCP connection: see settings → Features → Model context protocol
 
 ---
 
 ## CLI Flags
 
 ```
---repo PATH       Path ke repository (default: .)
---db PATH         Path ke database directory (default: ./rag-data)
+--repo PATH       Path to repository (default: .)
+--db PATH         Path to database directory (default: ./rag-data)
 --full            Force full re-index (vs incremental)
 --version         Show version
 ```
@@ -274,19 +274,19 @@ make docker-restart REPO=/path/to/project
 
 ## Performance Expectations
 
-Pada smart-rag repo (30 Go files, 3659 lines):
+On smart-rag repository (30 Go files, 3659 lines):
 - Cold index: ~122ms
 - Incremental: ~10ms
 - Search query: median 135µs, p95 228µs
-- Projected untuk 1000 files: ~4s index time
+- Projected for 1000 files: ~4s index time
 
 ---
 
 ## Next Steps
 
-1. Coba tools di Claude Desktop
-2. Create shortcuts untuk queries yang sering dipakai
-3. Use `impact_analysis` untuk understand change blast radius
-4. Use `get_context_pack` untuk retrieve full context sebelum refactor
+1. Try tools in Claude Desktop
+2. Create shortcuts for frequently used queries
+3. Use `impact_analysis` to understand change blast radius
+4. Use `get_context_pack` to retrieve full context before refactoring
 
-Dokumentasi lengkap: https://github.com/robby031/smart-rag
+Full documentation: https://github.com/robby031/smart-rag
