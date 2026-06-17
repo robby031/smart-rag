@@ -111,6 +111,9 @@ func (s *Syncer) gitDiff() (changed, deleted []string, err error) {
 	}
 
 	for f := range changedSet {
+		if filepath.Ext(f) != ".go" {
+			continue
+		}
 		absPath := filepath.Join(s.repoDir, f)
 		if _, err := os.Stat(absPath); os.IsNotExist(err) {
 			deleted = append(deleted, f)

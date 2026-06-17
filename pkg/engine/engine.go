@@ -335,3 +335,14 @@ func (e *Engine) readSnippet(ctx context.Context, q Query, resp *Response) (*Res
 	})
 	return resp, nil
 }
+
+// Stats returns a map of internal metrics for the performance banner.
+func (e *Engine) Stats() map[string]int {
+	graphStats := e.callGraph.Stats()
+	m := map[string]int{
+		"chunks":      len(e.bm25.DocIDs),
+		"graph_nodes": graphStats["nodes"],
+		"graph_edges": graphStats["edges"],
+	}
+	return m
+}
