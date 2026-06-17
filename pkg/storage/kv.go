@@ -78,7 +78,6 @@ func (s *Store) BatchPut(pairs []KVPair) error {
 	})
 }
 
-
 func (s *Store) Delete(key []byte) error {
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte("rag"))
@@ -108,4 +107,28 @@ func (s *Store) GetWithPrefix(prefix []byte) (map[string][]byte, error) {
 		return nil
 	})
 	return result, err
+}
+
+func (s *Store) DeleteWithPrefix(prefix []byte) error {
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("rag"))
+		c := b.Cursor()
+
+		var keys [][]byte
+		for k, _ := c.Seek(prefix); k != nil && len(k) >= len(prefix); k, _ = c.Next() {
+			if string(k[:len(prefix)]) != string(prefix) {
+				break
+			}
+			kCopy := make([]byte, len(k))
+			copy(kCopy, k)
+			keys = append(keys, kCopy)
+		}
+
+		for _, k := range keys {
+			if err := b.Delete(k); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
