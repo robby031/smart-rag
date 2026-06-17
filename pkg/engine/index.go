@@ -39,6 +39,7 @@ func (e *Engine) indexFileWith(
 		IsTest:  fileInfo.IsTest,
 	}
 	chunks := e.chunker.Chunk(decls, filePath, meta)
+	isGenerated := isGeneratedSource(src)
 
 	storeMetas := make([]storage.ChunkMeta, 0, len(chunks))
 	for _, ch := range chunks {
@@ -59,6 +60,11 @@ func (e *Engine) indexFileWith(
 			EndLine:    ch.EndLine,
 			Content:    ch.Content,
 		})
+		if isGenerated {
+			storeMetas[len(storeMetas)-1].SemanticRole = SemanticRoleBoilerplate
+			storeMetas[len(storeMetas)-1].FoldReason = FoldReasonGeneratedCode
+			storeMetas[len(storeMetas)-1].ContextWeight = generatedContextWeight
+		}
 	}
 	if err := chunkSink(storeMetas); err != nil {
 		return fmt.Errorf("store chunks: %w", err)
