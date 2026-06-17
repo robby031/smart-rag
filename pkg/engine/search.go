@@ -6,7 +6,7 @@ import (
 )
 
 func (e *Engine) search(_ context.Context, q Query, resp *Response) (*Response, error) {
-	tokens := e.tokenizer.Tokenize(q.Text)
+	tokens := e.tokenizer.TokenizeQuery(q.Text)
 	freq := make(map[string]int)
 	for tok, count := range tokens {
 		freq[tok] = count
