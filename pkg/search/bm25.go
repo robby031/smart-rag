@@ -6,29 +6,34 @@ import (
 )
 
 type BM25 struct {
-	docCount  int
-	avgDocLen float64
-	docLen    []int
-	termFreqs []map[string]int
-	idf       map[string]float64
-	k1        float64
-	b         float64
-	DocIDs    []string
+	docCount    int
+	avgDocLen   float64
+	docLen      []int
+	termFreqs   []map[string]int
+	idf         map[string]float64
+	k1          float64
+	b           float64
+	DocIDs      []string
+	lenNorm     []float64        // pre-computed: (1 - b + b * docLen / avgDocLen)
+	termPosting map[string][]int // term -> list of doc indices containing it
 }
 
 func NewBM25() *BM25 {
 	return &BM25{
-		k1: 1.2,
-		b:  0.75,
+		k1:          1.2,
+		b:           0.75,
+		termPosting: make(map[string][]int),
 	}
 }
 
 func (b *BM25) AddDocument(tokens map[string]int, docID string) {
+	idx := b.docCount
 	b.termFreqs = append(b.termFreqs, tokens)
 	b.DocIDs = append(b.DocIDs, docID)
 	var total int
-	for _, count := range tokens {
-		total += count
+	for term := range tokens {
+		total += tokens[term]
+		b.termPosting[term] = append(b.termPosting[term], idx)
 	}
 	b.docLen = append(b.docLen, total)
 	b.docCount++
@@ -44,15 +49,18 @@ func (b *BM25) Build() {
 	}
 	b.avgDocLen = float64(totalLen) / float64(b.docCount)
 
-	df := make(map[string]int)
-	for _, freqs := range b.termFreqs {
-		for term := range freqs {
-			df[term]++
-		}
+	df := make(map[string]int, len(b.termPosting))
+	for term, posting := range b.termPosting {
+		df[term] = len(posting)
 	}
-	b.idf = make(map[string]float64)
+	b.idf = make(map[string]float64, len(df))
 	for term, count := range df {
 		b.idf[term] = math.Log(1.0 + float64(b.docCount-count+1)/(float64(count)+0.5))
+	}
+
+	b.lenNorm = make([]float64, b.docCount)
+	for i, l := range b.docLen {
+		b.lenNorm[i] = 1 - b.b + b.b*float64(l)/b.avgDocLen
 	}
 }
 
@@ -66,9 +74,40 @@ func (b *BM25) Score(query map[string]int) []ScoredDoc {
 	if b.docCount == 0 {
 		return nil
 	}
-	results := make([]ScoredDoc, b.docCount)
-	for i := 0; i < b.docCount; i++ {
-		results[i] = ScoredDoc{Index: i, ID: b.DocIDs[i], Score: b.scoreDoc(i, query)}
+
+	// Collect candidate docs that match at least one query term
+	candidates := make(map[int]float64)
+	for term := range query {
+		for _, idx := range b.termPosting[term] {
+			if _, seen := candidates[idx]; !seen {
+				candidates[idx] = 0
+			}
+		}
+	}
+
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	for term := range query {
+		idf := b.idf[term]
+		if idf == 0 {
+			continue
+		}
+		for idx := range candidates {
+			tf := b.termFreqs[idx][term]
+			if tf == 0 {
+				continue
+			}
+			numer := float64(tf) * (b.k1 + 1)
+			denom := float64(tf) + b.k1*b.lenNorm[idx]
+			candidates[idx] += idf * numer / denom
+		}
+	}
+
+	results := make([]ScoredDoc, 0, len(candidates))
+	for idx, score := range candidates {
+		results = append(results, ScoredDoc{Index: idx, ID: b.DocIDs[idx], Score: score})
 	}
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].Score > results[j].Score
@@ -78,24 +117,23 @@ func (b *BM25) Score(query map[string]int) []ScoredDoc {
 
 func (b *BM25) scoreDoc(docIdx int, query map[string]int) float64 {
 	var score float64
-	freqs := b.termFreqs[docIdx]
-	docLen := float64(b.docLen[docIdx])
-
 	for term := range query {
-		if tf, ok := freqs[term]; ok {
-			idf := b.idf[term]
-			numer := float64(tf) * (b.k1 + 1)
-			denom := float64(tf) + b.k1*(1-b.b+b.b*docLen/b.avgDocLen)
-			score += idf * numer / denom
+		tf := b.termFreqs[docIdx][term]
+		if tf == 0 {
+			continue
 		}
+		idf := b.idf[term]
+		numer := float64(tf) * (b.k1 + 1)
+		denom := float64(tf) + b.k1*b.lenNorm[docIdx]
+		score += idf * numer / denom
 	}
 	return score
 }
 
 func (b *BM25) Search(query map[string]int, topK int) []ScoredDoc {
 	scored := b.Score(query)
-	if topK <= 0 || topK > len(scored) {
-		topK = len(scored)
+	if len(scored) <= topK {
+		return scored
 	}
 	return scored[:topK]
 }

@@ -6,14 +6,14 @@ VERSION  ?= 0.1.0
 all: build
 
 build:
-	go build -ldflags="-X main.version=$(VERSION)" -o $(BINARY) ./cmd/rag-mcp
+	go build -ldflags="-s -w -X main.version=$(VERSION)" -o $(BINARY) ./cmd/rag-mcp
 
 build-all:
-	go build ./...
+	go build -ldflags="-s -w" ./...
 
 install: build
 	@echo "Install $(BINARY) to GOBIN..."
-	@go install -ldflags="-X main.version=$(VERSION)" ./cmd/rag-mcp
+	@go install -ldflags="-s -w -X main.version=$(VERSION)" ./cmd/rag-mcp
 	@echo ""
 	@echo "Add to VS Code settings.json:"
 	@echo '{'

@@ -6,21 +6,28 @@ import (
 )
 
 type SparseRetriever struct {
-	vectors  []map[string]float64
-	idf      map[string]float64
-	docCount int
-	DocIDs   []string
+	vectors     []map[string]float64
+	idf         map[string]float64
+	docCount    int
+	DocIDs      []string
+	norms       []float64
+	termPosting map[string][]int
 }
 
 func NewSparseRetriever() *SparseRetriever {
 	return &SparseRetriever{
-		idf: make(map[string]float64),
+		idf:         make(map[string]float64),
+		termPosting: make(map[string][]int),
 	}
 }
 
 func (s *SparseRetriever) AddDocument(vec map[string]float64, docID string) {
+	idx := s.docCount
 	s.vectors = append(s.vectors, vec)
 	s.DocIDs = append(s.DocIDs, docID)
+	for term := range vec {
+		s.termPosting[term] = append(s.termPosting[term], idx)
+	}
 	s.docCount++
 }
 
@@ -28,22 +35,25 @@ func (s *SparseRetriever) Build() {
 	if s.docCount == 0 {
 		return
 	}
-	df := make(map[string]int)
-	for _, vec := range s.vectors {
-		for term := range vec {
-			df[term]++
-		}
+	df := make(map[string]int, len(s.termPosting))
+	for term, posting := range s.termPosting {
+		df[term] = len(posting)
 	}
 	for term, count := range df {
 		s.idf[term] = math.Log(1.0 + float64(s.docCount)/float64(count))
 	}
 
+	s.norms = make([]float64, s.docCount)
 	for i, vec := range s.vectors {
 		weighted := make(map[string]float64, len(vec))
+		var norm float64
 		for term, val := range vec {
-			weighted[term] = val * s.idf[term]
+			w := val * s.idf[term]
+			weighted[term] = w
+			norm += w * w
 		}
 		s.vectors[i] = weighted
+		s.norms[i] = math.Sqrt(norm)
 	}
 }
 
@@ -54,15 +64,53 @@ type ScoredResult struct {
 }
 
 func (s *SparseRetriever) Search(query map[string]float64, topK int) []ScoredResult {
-	results := make([]ScoredResult, 0, s.docCount)
+	if len(query) == 0 || s.docCount == 0 {
+		return nil
+	}
 
-	for i, vec := range s.vectors {
-		score := cosineSimilarity(query, vec)
-		if score > 0 {
-			results = append(results, ScoredResult{Index: i, ID: s.DocIDs[i], Score: score})
+	// Find candidate docs that share at least one query term
+	candidates := make(map[int]float64)
+	for term := range query {
+		for _, idx := range s.termPosting[term] {
+			if _, seen := candidates[idx]; !seen {
+				candidates[idx] = 0
+			}
 		}
 	}
 
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	// Compute query norm
+	var queryNorm float64
+	for _, v := range query {
+		queryNorm += v * v
+	}
+	queryNorm = math.Sqrt(queryNorm)
+	if queryNorm == 0 {
+		return nil
+	}
+
+	for idx := range candidates {
+		var dot float64
+		vec := s.vectors[idx]
+		for term := range query {
+			if v, ok := vec[term]; ok {
+				dot += query[term] * v
+			}
+		}
+		if s.norms[idx] > 0 {
+			candidates[idx] = dot / (queryNorm * s.norms[idx])
+		}
+	}
+
+	results := make([]ScoredResult, 0, len(candidates))
+	for idx, score := range candidates {
+		if score > 0 {
+			results = append(results, ScoredResult{Index: idx, ID: s.DocIDs[idx], Score: score})
+		}
+	}
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].Score > results[j].Score
 	})
@@ -71,23 +119,4 @@ func (s *SparseRetriever) Search(query map[string]float64, topK int) []ScoredRes
 		topK = len(results)
 	}
 	return results[:topK]
-}
-
-func cosineSimilarity(a, b map[string]float64) float64 {
-	var dot, normA, normB float64
-
-	for k, v := range a {
-		normA += v * v
-		if bv, ok := b[k]; ok {
-			dot += v * bv
-		}
-	}
-	for _, v := range b {
-		normB += v * v
-	}
-
-	if normA == 0 || normB == 0 {
-		return 0
-	}
-	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
 }

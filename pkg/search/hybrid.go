@@ -33,8 +33,16 @@ type HybridResult struct {
 }
 
 func (h *HybridSearch) Search(bm25Query map[string]int, sparseQuery map[string]float64, topK int) []HybridResult {
+	candidateLimit := topK * 10
+	if candidateLimit < 100 {
+		candidateLimit = 100
+	}
+
 	bm25Results := h.bm25.Score(bm25Query)
-	sparseResults := h.sparse.Search(sparseQuery, len(sparseQuery))
+	if len(bm25Results) > candidateLimit {
+		bm25Results = bm25Results[:candidateLimit]
+	}
+	sparseResults := h.sparse.Search(sparseQuery, candidateLimit)
 
 	bm25Score := make(map[string]float64)
 	sparseScore := make(map[string]float64)
