@@ -53,14 +53,16 @@ func (vdb *VectorDB) Count() int {
 }
 
 type ChunkMeta struct {
-	ID         string `json:"id"`
-	FilePath   string `json:"file_path"`
-	ChunkType  string `json:"chunk_type"`
-	SymbolName string `json:"symbol_name,omitempty"`
-	Signature  string `json:"signature,omitempty"`
-	StartLine  int    `json:"start_line"`
-	EndLine    int    `json:"end_line"`
-	Content    string `json:"content"`
+	ID            string  `json:"id"`
+	FilePath      string  `json:"file_path"`
+	ChunkType     string  `json:"chunk_type"`
+	SymbolName    string  `json:"symbol_name,omitempty"`
+	Signature     string  `json:"signature,omitempty"`
+	StartLine     int     `json:"start_line"`
+	EndLine       int     `json:"end_line"`
+	Content       string  `json:"content"`
+	Reachability  string  `json:"reachability,omitempty"`
+	ContextWeight float64 `json:"context_weight,omitempty"`
 }
 
 type ChunkStore struct {
