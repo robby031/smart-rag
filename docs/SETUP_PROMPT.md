@@ -7,7 +7,7 @@
 ## Overview
 
 Smart RAG is a code intelligence engine based on RAG (Retrieval-Augmented Generation) that indexes your codebase and provides MCP tools for Claude Desktop / Claude Code. With smart-rag, you can:
-- Search code with natural language (BM25 + sparse vector)
+- Search code with natural language using ranked BM25
 - Go-to-definition for symbols (find_definition)
 - Find all references of a symbol (find_references)
 - Explore call graph (get_callers / get_callees)
