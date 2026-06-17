@@ -55,19 +55,15 @@ type Response struct {
 }
 
 type Engine struct {
-	chunker      *indexer.Chunker
-	parser       *indexer.Parser
-	tokenizer    *indexer.Tokenizer
-	bm25         *search.BM25
-	sparse       *search.SparseRetriever
-	hybrid       *search.HybridSearch
-	astSearch    *searcher.ASTSearch
-	graph        *graph.Graph
-	callGraph    *graph.CallGraph
-	importGraph  *graph.ImportGraph
-	chunkStore   *storage.ChunkStore
-	pendingMu    sync.Mutex
-	pendingChunks []storage.ChunkMeta
+	chunker     *indexer.Chunker
+	parser      *indexer.Parser
+	tokenizer   *indexer.Tokenizer
+	bm25        *search.BM25
+	astSearch   *searcher.ASTSearch
+	graph       *graph.Graph
+	callGraph   *graph.CallGraph
+	importGraph *graph.ImportGraph
+	chunkStore  *storage.ChunkStore
 }
 
 func New(kvStore *storage.Store, chunkStore *storage.ChunkStore, _ *storage.VectorDB, graphStore *storage.GraphStore) *Engine {
@@ -75,8 +71,6 @@ func New(kvStore *storage.Store, chunkStore *storage.ChunkStore, _ *storage.Vect
 	parser := indexer.NewParser()
 	tokenizer := indexer.NewTokenizer()
 	bm25 := search.NewBM25()
-	sparse := search.NewSparseRetriever()
-	hybrid := search.NewHybridSearch(bm25, sparse, 0.5)
 	cg := graph.NewPersistentCallGraph(graphStore)
 	ig := graph.NewPersistentImportGraph(graphStore)
 
@@ -85,8 +79,6 @@ func New(kvStore *storage.Store, chunkStore *storage.ChunkStore, _ *storage.Vect
 		parser:      parser,
 		tokenizer:   tokenizer,
 		bm25:        bm25,
-		sparse:      sparse,
-		hybrid:      hybrid,
 		astSearch:   searcher.NewASTSearch(),
 		graph:       graph.NewGraph(cg, ig),
 		callGraph:   cg,
@@ -96,6 +88,14 @@ func New(kvStore *storage.Store, chunkStore *storage.ChunkStore, _ *storage.Vect
 }
 
 func (e *Engine) IndexFile(ctx context.Context, filePath, src string) error {
+	return e.indexFileWith(filePath, src, e.bm25.AddDocument, e.chunkStore.PutAll)
+}
+
+func (e *Engine) indexFileWith(
+	filePath, src string,
+	addDoc func(map[string]int, string),
+	chunkSink func([]storage.ChunkMeta) error,
+) error {
 	astFile, decls, fileInfo, err := e.parser.ParseFile(filePath, src)
 	if err != nil {
 		return fmt.Errorf("parse: %w", err)
@@ -116,14 +116,7 @@ func (e *Engine) IndexFile(ctx context.Context, filePath, src string) error {
 		for tok, count := range tokens {
 			freq[tok] = count
 		}
-		e.bm25.AddDocument(freq, ch.ID)
-
-		tfidf := e.tokenizer.TFIDF(freq, nil)
-		vec := make(map[string]float64)
-		for k, v := range tfidf {
-			vec[k] = v
-		}
-		e.sparse.AddDocument(vec, ch.ID)
+		addDoc(freq, ch.ID)
 
 		storeMetas = append(storeMetas, storage.ChunkMeta{
 			ID:         ch.ID,
@@ -136,9 +129,9 @@ func (e *Engine) IndexFile(ctx context.Context, filePath, src string) error {
 			Content:    ch.Content,
 		})
 	}
-	e.pendingMu.Lock()
-	e.pendingChunks = append(e.pendingChunks, storeMetas...)
-	e.pendingMu.Unlock()
+	if err := chunkSink(storeMetas); err != nil {
+		return fmt.Errorf("store chunks: %w", err)
+	}
 
 	if err := e.callGraph.ParseAST(astFile, e.parser.FileSet(), filePath, fileInfo.Package); err != nil {
 		return fmt.Errorf("callgraph: %w", err)
@@ -150,8 +143,6 @@ func (e *Engine) IndexFile(ctx context.Context, filePath, src string) error {
 	return nil
 }
 
-// IndexDir indexes all .go files in repoDir using a worker pool.
-// workers defaults to runtime.NumCPU() when <= 0.
 func (e *Engine) IndexDir(ctx context.Context, repoDir string, workers int) error {
 	if workers <= 0 {
 		workers = runtime.NumCPU()
@@ -167,16 +158,41 @@ func (e *Engine) IndexDir(ctx context.Context, repoDir string, workers int) erro
 	}
 	close(work)
 
+	type workerState struct {
+		chunks []storage.ChunkMeta
+	}
+	states := make([]*workerState, workers)
+	for i := range states {
+		states[i] = &workerState{}
+	}
+
 	var (
-		wg      sync.WaitGroup
-		mu      sync.Mutex
+		wg       sync.WaitGroup
+		mu       sync.Mutex
 		firstErr error
 	)
 
-	for range workers {
+	for i := range workers {
 		wg.Add(1)
+		ws := states[i]
 		go func() {
 			defer wg.Done()
+			flushChunks := func() error {
+				if len(ws.chunks) == 0 {
+					return nil
+				}
+				err := e.chunkStore.PutAll(ws.chunks)
+
+				ws.chunks = nil
+				return err
+			}
+			sink := func(metas []storage.ChunkMeta) error {
+				ws.chunks = append(ws.chunks, metas...)
+				if len(ws.chunks) >= 2000 {
+					return flushChunks()
+				}
+				return nil
+			}
 			for path := range work {
 				src, err := os.ReadFile(path)
 				if err != nil {
@@ -188,9 +204,8 @@ func (e *Engine) IndexDir(ctx context.Context, repoDir string, workers int) erro
 					return
 				}
 				relPath, _ := filepath.Rel(repoDir, path)
-				if err := e.IndexFile(ctx, relPath, string(src)); err != nil {
-					// Skip files that fail to parse (e.g. build-tag-only files,
-					// intentionally malformed testdata). Hard I/O errors propagate.
+				if err := e.indexFileWith(relPath, string(src), e.bm25.AddDocument, sink); err != nil {
+
 					if strings.HasPrefix(err.Error(), "parse:") {
 						continue
 					}
@@ -201,20 +216,13 @@ func (e *Engine) IndexDir(ctx context.Context, repoDir string, workers int) erro
 					mu.Unlock()
 					return
 				}
-				// Periodic flush: keep pendingChunks bounded in memory.
-				e.pendingMu.Lock()
-				shouldFlush := len(e.pendingChunks) >= 2000
-				e.pendingMu.Unlock()
-				if shouldFlush {
-					if err := e.flushChunks(); err != nil {
-						mu.Lock()
-						if firstErr == nil {
-							firstErr = err
-						}
-						mu.Unlock()
-						return
-					}
+			}
+			if err := flushChunks(); err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
 				}
+				mu.Unlock()
 			}
 		}()
 	}
@@ -223,26 +231,12 @@ func (e *Engine) IndexDir(ctx context.Context, repoDir string, workers int) erro
 	return firstErr
 }
 
-func (e *Engine) flushChunks() error {
-	e.pendingMu.Lock()
-	chunks := e.pendingChunks
-	e.pendingChunks = nil
-	e.pendingMu.Unlock()
-	if len(chunks) == 0 {
-		return nil
-	}
-	return e.chunkStore.PutAll(chunks)
-}
-
 func (e *Engine) FinalizeIndex() error {
 	e.bm25.Build()
-	e.sparse.Build()
-	if err := e.flushChunks(); err != nil {
-		return fmt.Errorf("flush chunks: %w", err)
-	}
 	if err := e.callGraph.Flush(); err != nil {
 		return fmt.Errorf("flush call graph: %w", err)
 	}
+	e.callGraph.BuildInEdges()
 	return e.importGraph.Flush()
 }
 
@@ -286,32 +280,23 @@ func (e *Engine) search(_ context.Context, q Query, resp *Response) (*Response, 
 		freq[tok] = count
 	}
 
-	tfidf := e.tokenizer.TFIDF(freq, nil)
-	sparseQuery := make(map[string]float64)
-	for k, v := range tfidf {
-		sparseQuery[k] = v
-	}
-
 	topK := q.TopK
 	if topK <= 0 {
 		topK = 10
 	}
 
-	hybridResults := e.hybrid.Search(freq, sparseQuery, topK)
-	for _, hr := range hybridResults {
-		r := Result{Score: hr.FinalScore}
-		chunk, err := e.chunkStore.Get(hr.ChunkID)
-		if err == nil && chunk != nil {
-			if q.Language != "" && !strings.HasSuffix(chunk.FilePath, "."+q.Language) {
-				continue
-			}
-			if q.File != "" && !strings.Contains(chunk.FilePath, q.File) {
-				continue
-			}
-			r.Chunk = chunk
-			r.Content = chunk.Content
+	for _, sr := range e.bm25.Search(freq, topK) {
+		chunk, err := e.chunkStore.Get(sr.ID)
+		if err != nil || chunk == nil {
+			continue
 		}
-		resp.Results = append(resp.Results, r)
+		if q.Language != "" && !strings.HasSuffix(chunk.FilePath, "."+q.Language) {
+			continue
+		}
+		if q.File != "" && !strings.Contains(chunk.FilePath, q.File) {
+			continue
+		}
+		resp.Results = append(resp.Results, Result{Score: sr.Score, Chunk: chunk, Content: chunk.Content})
 	}
 
 	return resp, nil
@@ -426,7 +411,6 @@ func (e *Engine) readSnippet(_ context.Context, q Query, resp *Response) (*Respo
 	return resp, nil
 }
 
-// Stats returns a map of internal metrics for the performance banner.
 func (e *Engine) Stats() map[string]int {
 	graphStats := e.callGraph.Stats()
 	m := map[string]int{
