@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/bagusdwiharianto/smart-rag/pkg/engine"
 	"github.com/bagusdwiharianto/smart-rag/pkg/indexer"
+	"github.com/bagusdwiharianto/smart-rag/pkg/searcher"
 	"github.com/bagusdwiharianto/smart-rag/pkg/storage"
 )
 
@@ -26,9 +28,7 @@ func main() {
 	absDB, _ := filepath.Abs(*dbDir)
 	os.MkdirAll(absDB, 0755)
 
-	// Count files first
-	goFiles := countGoFiles(absRepo)
-	totalLines := countGoLines(absRepo)
+	goFiles, totalLines := goStats(absRepo)
 
 	kvStore, err := storage.OpenStore(filepath.Join(absDB, "kv"))
 	if err != nil {
@@ -95,47 +95,17 @@ func main() {
 	fmt.Println()
 }
 
-func countGoFiles(dir string) int {
-	count := 0
-	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+func goStats(dir string) (files, lines int) {
+	paths, _ := searcher.WalkFiles(dir, 0)
+	for _, p := range paths {
+		files++
+		src, err := os.ReadFile(p)
 		if err != nil {
-			return nil
+			continue
 		}
-		if info.IsDir() && info.Name()[0] == '.' && info.Name() != "." {
-			return filepath.SkipDir
-		}
-		if filepath.Ext(path) == ".go" {
-			count++
-		}
-		return nil
-	})
-	return count
-}
-
-func countGoLines(dir string) int {
-	lines := 0
-	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if info.IsDir() && info.Name()[0] == '.' && info.Name() != "." {
-			return filepath.SkipDir
-		}
-		if filepath.Ext(path) != ".go" {
-			return nil
-		}
-		src, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		for _, b := range src {
-			if b == '\n' {
-				lines++
-			}
-		}
-		return nil
-	})
-	return lines
+		lines += bytes.Count(src, []byte{'\n'})
+	}
+	return
 }
 
 func indexRepo(eng *engine.Engine, repoDir string) error {
