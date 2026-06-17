@@ -57,6 +57,11 @@ func main() {
 	}
 
 	eng := engine.New(kvStore, chunkStore, vectorDB, graphStore)
+	eng.SetRuntimeInfo(engine.RuntimeInfo{
+		Version: version,
+		RepoDir: absRepo,
+		DBDir:   absDB,
+	})
 
 	if *fullReindex {
 		fmt.Fprintln(os.Stderr, "Full re-indexing repository:", absRepo)
@@ -66,6 +71,12 @@ func main() {
 		if err := eng.FinalizeIndex(); err != nil {
 			log.Fatalf("Failed to finalize index: %v", err)
 		}
+		stats := eng.Stats()
+		eng.RecordIndexSummary(engine.IndexSummary{
+			Mode:    "full",
+			Indexed: stats["chunks"],
+			Deleted: 0,
+		})
 	} else {
 		syncer := indexer.NewSyncer(eng, indexStore, absRepo)
 		indexed, deleted, err := syncer.Sync(context.Background())
@@ -73,10 +84,15 @@ func main() {
 			log.Fatalf("Failed to sync repository: %v", err)
 		}
 		fmt.Fprintf(os.Stderr, "Incremental indexing: %d files indexed, %d files removed\n", indexed, deleted)
+		eng.RecordIndexSummary(engine.IndexSummary{
+			Mode:    "incremental",
+			Indexed: indexed,
+			Deleted: deleted,
+		})
 	}
 
 	fmt.Fprintln(os.Stderr, "Starting smart-rag MCP server...")
-	server := mcp.NewServer(eng)
+	server := mcp.NewServer(eng, version)
 	if err := server.Serve("stdio"); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
