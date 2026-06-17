@@ -6,38 +6,31 @@ import (
 	"strings"
 )
 
-// Graph unifies call graph and dependency graph into a single query interface.
 type Graph struct {
 	callGraph   *CallGraph
 	importGraph *ImportGraph
 }
 
-// NewGraph creates a unified graph wrapping both call and import graphs.
 func NewGraph(cg *CallGraph, ig *ImportGraph) *Graph {
 	return &Graph{callGraph: cg, importGraph: ig}
 }
 
-// Callers returns all functions that call the given function ID.
 func (g *Graph) Callers(funcID string) []string {
 	return g.callGraph.Callers(funcID)
 }
 
-// Callees returns all functions called by the given function ID.
 func (g *Graph) Callees(funcID string) []string {
 	return g.callGraph.Callees(funcID)
 }
 
-// Importers returns packages that import the given package path.
 func (g *Graph) Importers(pkgPath string) []string {
 	return g.importGraph.Dependents(pkgPath)
 }
 
-// Dependencies returns packages imported by the given package.
 func (g *Graph) Dependencies(pkg string) []string {
 	return g.importGraph.Dependencies(pkg)
 }
 
-// ImpactResult describes one node in the impact chain.
 type ImpactResult struct {
 	ID    string `json:"id"`
 	Depth int    `json:"depth"`
