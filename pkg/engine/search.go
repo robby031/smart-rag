@@ -17,7 +17,13 @@ func (e *Engine) search(_ context.Context, q Query, resp *Response) (*Response, 
 		topK = 10
 	}
 
-	for _, sr := range e.bm25.Search(freq, topK) {
+	// Over-fetch when filters are active so post-filter count approaches topK.
+	fetchK := topK
+	if q.Language != "" || q.File != "" {
+		fetchK = topK * 5
+	}
+
+	for _, sr := range e.bm25.Search(freq, fetchK) {
 		chunk, err := e.chunkStore.Get(sr.ID)
 		if err != nil || chunk == nil {
 			continue
@@ -29,6 +35,9 @@ func (e *Engine) search(_ context.Context, q Query, resp *Response) (*Response, 
 			continue
 		}
 		resp.Results = append(resp.Results, Result{Score: sr.Score, Chunk: chunk, Content: chunk.Content})
+		if len(resp.Results) >= topK {
+			break
+		}
 	}
 
 	return resp, nil
