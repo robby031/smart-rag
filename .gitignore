@@ -11,6 +11,7 @@
 # Project binaries
 rag-mcp
 rag-mcp-bench
+bench
 
 # Test binary, built with `go test -c`
 *.test
