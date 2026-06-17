@@ -3,8 +3,10 @@ BENCH    ?= rag-mcp-bench
 DB       ?= ./rag-data
 REPO     ?= .
 VERSION  ?= 0.1.0
+IMAGE    ?= smart-rag
 
-.PHONY: all build bench install run run-full bench-run bench-run-full test clean help
+.PHONY: all build bench install run run-full bench-run bench-run-full test clean \
+        docker-build docker-index docker-run docker-restart help
 
 all: build
 
@@ -46,6 +48,22 @@ install: build
 test:            ; @echo "Run all tests"
 	go test ./...
 
+docker-build:    ; @echo "Build Docker image → $(IMAGE):latest"
+	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE):latest .
+
+docker-index:    ; @echo "Full re-index via Docker (REPO=$(REPO))"
+	REPO_DIR=$(REPO) docker compose run --rm index
+
+docker-run:      ; @echo "Run MCP server via Docker (REPO=$(REPO))"
+	docker run -i --rm \
+	  -v "$(abspath $(REPO)):/repo:ro" \
+	  -v "smart-rag-data:/data" \
+	  $(IMAGE):latest
+
+docker-restart:  ; @echo "Rebuild image and re-index (REPO=$(REPO))"
+	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE):latest .
+	REPO_DIR=$(REPO) docker compose run --rm index
+
 clean:           ; @echo "Remove build artifacts and database"
 	go clean -cache
 	rm -rf $(DB) $(BINARY) $(BENCH) bench
@@ -68,6 +86,16 @@ help:
 	@echo "  REPO=path       Source repository path (default: .)"
 	@echo "  DB=path         Database directory (default: ./rag-data)"
 	@echo "  VERSION=x.y.z   Binary version (default: 0.1.0)"
+	@echo "  IMAGE=name      Docker image name (default: smart-rag)"
 	@echo ""
-	@echo "Example:"
+	@echo "Examples:"
 	@echo "  make run REPO=/home/user/project DB=~/rag-data"
+	@echo "  make docker-build"
+	@echo "  make docker-index   REPO=/home/user/project"
+	@echo "  make docker-run     REPO=/home/user/project"
+	@echo "  make docker-restart REPO=/home/user/project"
+	@echo ""
+	@echo "MCP client config (Claude Code .mcp.json):"
+	@echo '  { "mcpServers": { "smart-rag": { "command": "docker",'
+	@echo '    "args": ["run","-i","--rm","-v","/your/repo:/repo:ro",'
+	@echo '    "-v","smart-rag-data:/data","smart-rag:latest"] } } }'

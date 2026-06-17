@@ -31,9 +31,69 @@ make run-full REPO=/path/to/your/project
 | `--full`   | `false`  | Force full re-index instead of incremental |
 | `--version`| `false`  | Show version                        |
 
-### VS Code MCP Integration
+### Docker (recommended)
 
-Run `make install` or add to VS Code `settings.json`:
+**1. Build image**
+
+```bash
+make docker-build
+```
+
+**2. Index repo**
+
+```bash
+make docker-index REPO=/path/to/your/project
+```
+
+**3. Add to Claude Desktop** — `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "smart-rag": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-v", "/path/to/your/project:/repo:ro",
+        "-v", "smart-rag-data:/data",
+        "smart-rag:latest"
+      ]
+    }
+  }
+}
+```
+
+**4. Add to Claude Code** — `.mcp.json` di root project:
+
+```json
+{
+  "mcpServers": {
+    "smart-rag": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-v", "/path/to/your/project:/repo:ro",
+        "-v", "smart-rag-data:/data",
+        "smart-rag:latest"
+      ]
+    }
+  }
+}
+```
+
+Restart Claude setelah menambahkan config. Setiap sesi baru, Docker otomatis melakukan incremental sync sebelum server MCP aktif.
+
+**Re-index setelah update kode smart-rag:**
+
+```bash
+make docker-restart REPO=/path/to/your/project
+```
+
+---
+
+### Binary (tanpa Docker)
+
+Run `make install` atau tambahkan ke VS Code `settings.json`:
 
 ```json
 {

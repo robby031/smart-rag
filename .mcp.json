@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "smart-rag": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-v", "/Users/bagusdwiharianto/Development/go/smart-rag:/repo:ro",
+        "-v", "smart-rag-data:/data",
+        "smart-rag:latest"
+      ]
+    }
+  }
+}

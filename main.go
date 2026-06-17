@@ -22,6 +22,7 @@ func main() {
 	fullReindex := flag.Bool("full", false, "Force full re-index instead of incremental")
 	showVersion := flag.Bool("version", false, "Show version")
 	flag.Parse()
+	log.SetOutput(os.Stderr)
 
 	if *showVersion {
 		fmt.Printf("rag-mcp %s\n", version)
@@ -58,7 +59,7 @@ func main() {
 	eng := engine.New(kvStore, chunkStore, vectorDB, graphStore)
 
 	if *fullReindex {
-		fmt.Println("Full re-indexing repository:", absRepo)
+		fmt.Fprintln(os.Stderr, "Full re-indexing repository:", absRepo)
 		if err := eng.IndexDir(context.Background(), absRepo, 0); err != nil {
 			log.Fatalf("Failed to index repository: %v", err)
 		}
@@ -71,10 +72,10 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to sync repository: %v", err)
 		}
-		fmt.Printf("Incremental indexing: %d files indexed, %d files removed\n", indexed, deleted)
+		fmt.Fprintf(os.Stderr, "Incremental indexing: %d files indexed, %d files removed\n", indexed, deleted)
 	}
 
-	fmt.Println("Starting smart-rag MCP server...")
+	fmt.Fprintln(os.Stderr, "Starting smart-rag MCP server...")
 	server := mcp.NewServer(eng)
 	if err := server.Serve("stdio"); err != nil {
 		log.Fatalf("Server error: %v", err)

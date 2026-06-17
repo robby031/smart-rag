@@ -1,0 +1,5 @@
+rag-data/
+rag-mcp
+rag-mcp-bench
+*.db
+.git
