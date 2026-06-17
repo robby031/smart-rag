@@ -158,3 +158,30 @@ make clean        # Remove artifacts
 - `REPO=path` — source repository (default: `.`)
 - `DB=path` — database directory (default: `./rag-data`)
 - `VERSION=x.y.z` — binary version (default: `0.1.0`)
+
+## Performance
+
+Benchmarked on the smart-rag repository itself (30 Go files, 3659 lines).
+
+```
+smart-rag performance matrix
+================================
+  Version       : 0.1.0
+  Repository    : /Users/bagusdwiharianto/Development/go/smart-rag
+  Go files      : 30 (3659 lines)
+  Chunks        : 247
+  Graph nodes   : 165
+  Graph edges   : 539
+  Index time    : 122ms
+--------------------------------
+  Metric                      Target        Actual
+  Cold index (  30 files)  ok  < 5-8s       122ms
+  Projected   (1000 files) ok  < 5-8s       ~4.078s  [from 30 files]
+  Incremental (    1 file) ok  < 1-2s       10ms
+  Query search             ok  < 50-80ms    median 135µs     p95 228µs  [247 chunks]
+  Query find-def           ok  < 50-80ms    median 67µs      p95 77µs  [247 chunks]
+  Query callers            ok  < 50-80ms    median < 1µs     p95 < 1µs  [247 chunks]
+  Binary size              ok  < 15-20 MB   6.8 MB
+  RAM during index         ok  < 80-120 MB  1.7 MB heap delta
+  Query 100k docs          warn  ~20-40ms     ~55ms projected  [linear from 247 chunks]
+```
