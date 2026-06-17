@@ -30,7 +30,7 @@ func (s *SmartRAGServer) Serve(transport string) error {
 
 func (s *SmartRAGServer) registerTools() {
 	s.mcpServer.AddTool(mcp.NewTool("search_code",
-		mcp.WithDescription("Hybrid search code (BM25 + sparse vector). Supports language and path filters."),
+		mcp.WithDescription("Ranked BM25 code search with deterministic tie-breakers, lightweight boosts, and language/path filters."),
 		mcp.WithString("query", mcp.Required(), mcp.Description("Search query")),
 		mcp.WithNumber("top_k", mcp.Description("Number of results (default 10)")),
 		mcp.WithString("language", mcp.Description("Filter by language extension (e.g. go, py, ts)")),
