@@ -1,16 +1,24 @@
 package engine
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/robby031/smart-rag/pkg/graph"
 	"github.com/robby031/smart-rag/pkg/indexer"
+	"github.com/robby031/smart-rag/pkg/search"
 	"github.com/robby031/smart-rag/pkg/storage"
 )
 
+type PruningMode string
+
 const (
+	PruningModeOff  PruningMode = "off"
+	PruningModeSoft PruningMode = "soft"
+	PruningModeHard PruningMode = "hard"
+
 	ReachabilityUnknown     = "unknown"
 	ReachabilityReachable   = "reachable"
 	ReachabilityUnreachable = "unreachable"
@@ -32,8 +40,41 @@ const (
 	autoContextMinWeight     = 0.75
 )
 
+func ParsePruningMode(value string) (PruningMode, error) {
+	switch PruningMode(strings.ToLower(strings.TrimSpace(value))) {
+	case "", PruningModeSoft:
+		return PruningModeSoft, nil
+	case PruningModeOff:
+		return PruningModeOff, nil
+	case PruningModeHard:
+		return PruningModeHard, nil
+	default:
+		return "", fmt.Errorf("invalid pruning mode %q: expected off, soft, or hard", value)
+	}
+}
+
+func (e *Engine) SetPruningMode(mode PruningMode) error {
+	parsed, err := ParsePruningMode(string(mode))
+	if err != nil {
+		return err
+	}
+	e.pruningMode = parsed
+	return nil
+}
+
+func (e *Engine) effectivePruningMode() PruningMode {
+	if e == nil || e.pruningMode == "" {
+		return PruningModeSoft
+	}
+	return e.pruningMode
+}
+
+func (e *Engine) pruningEnabled() bool {
+	return e.effectivePruningMode() != PruningModeOff
+}
+
 func (e *Engine) refreshChunkReachability() error {
-	if e.callGraph == nil || e.chunkStore == nil {
+	if !e.pruningEnabled() || e.callGraph == nil || e.chunkStore == nil {
 		return nil
 	}
 
@@ -84,6 +125,60 @@ func (e *Engine) refreshChunkReachability() error {
 	}
 
 	return e.chunkStore.PutAll(updated)
+}
+
+func (e *Engine) applyHardPruning() (int, error) {
+	if e.effectivePruningMode() != PruningModeHard || e.chunkStore == nil {
+		return 0, nil
+	}
+
+	chunks, err := e.chunkStore.GetAll()
+	if err != nil {
+		return 0, err
+	}
+	deleted := 0
+	for _, chunk := range chunks {
+		if !hardPrunableChunk(chunk) {
+			continue
+		}
+		if err := e.chunkStore.Delete(chunk.ID); err != nil {
+			return deleted, err
+		}
+		deleted++
+	}
+	if deleted == 0 {
+		return 0, nil
+	}
+	return deleted, e.rebuildBM25FromChunks()
+}
+
+func hardPrunableChunk(chunk *storage.ChunkMeta) bool {
+	if chunk == nil {
+		return false
+	}
+	return chunk.Reachability == ReachabilityUnreachable || chunk.SemanticRole == SemanticRoleBoilerplate
+}
+
+func (e *Engine) rebuildBM25FromChunks() error {
+	if e.chunkStore == nil || e.tokenizer == nil {
+		return nil
+	}
+	chunks, err := e.chunkStore.GetAll()
+	if err != nil {
+		return err
+	}
+	bm25 := search.NewBM25()
+	for _, chunk := range chunks {
+		tokens := e.tokenizer.Tokenize(chunk.Content)
+		freq := make(map[string]int)
+		for tok, count := range tokens {
+			freq[tok] = count
+		}
+		bm25.AddDocument(freq, chunk.ID)
+	}
+	bm25.Build()
+	e.bm25 = bm25
+	return nil
 }
 
 func (e *Engine) reachableNodeSet(extraRoots ...string) map[string]bool {
@@ -546,9 +641,12 @@ func chunkContextWeight(chunk *storage.ChunkMeta) float64 {
 	return chunk.ContextWeight
 }
 
-func chunkAutoContextEligible(chunk *storage.ChunkMeta) bool {
+func (e *Engine) chunkAutoContextEligible(chunk *storage.ChunkMeta) bool {
 	if chunk == nil {
 		return false
+	}
+	if !e.pruningEnabled() {
+		return true
 	}
 	if chunk.Reachability == ReachabilityUnreachable {
 		return false
@@ -557,7 +655,7 @@ func chunkAutoContextEligible(chunk *storage.ChunkMeta) bool {
 }
 
 func (e *Engine) queryReachableChunkSet(query string, queryTokens map[string]int) map[string]bool {
-	if e.callGraph == nil || e.chunkStore == nil {
+	if !e.pruningEnabled() || e.callGraph == nil || e.chunkStore == nil {
 		return nil
 	}
 
