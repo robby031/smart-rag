@@ -64,6 +64,8 @@ func (e *Engine) indexFileWith(
 		return fmt.Errorf("store chunks: %w", err)
 	}
 
+	e.callGraph.DeleteByFile(filePath)
+
 	if err := e.callGraph.ParseAST(astFile, e.parser.FileSet(), filePath, fileInfo.Package); err != nil {
 		return fmt.Errorf("callgraph: %w", err)
 	}
