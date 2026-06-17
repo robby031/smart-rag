@@ -175,6 +175,9 @@ func (e *Engine) FinalizeIndex() error {
 		return fmt.Errorf("flush call graph: %w", err)
 	}
 	e.callGraph.BuildInEdges()
+	if err := e.refreshChunkReachability(); err != nil {
+		return fmt.Errorf("refresh chunk reachability: %w", err)
+	}
 	return e.importGraph.Flush()
 }
 
