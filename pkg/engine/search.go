@@ -119,7 +119,11 @@ func rankSearchResult(q Query, queryTokens map[string]int, bm25Score float64, ch
 		details = append(details, "boost query_reachable_root=skip_unreachable_penalty")
 	} else if weight := chunkContextWeight(chunk); weight < 1 {
 		score *= weight
-		details = append(details, fmt.Sprintf("penalty reachability=%s weight=%.4f", valueOrUnknown(chunk.Reachability), weight))
+		if chunk.SemanticRole == SemanticRoleBoilerplate && chunk.FoldReason != "" {
+			details = append(details, fmt.Sprintf("penalty semantic_role=%s fold_reason=%s weight=%.4f", chunk.SemanticRole, chunk.FoldReason, weight))
+		} else {
+			details = append(details, fmt.Sprintf("penalty reachability=%s weight=%.4f", valueOrUnknown(chunk.Reachability), weight))
+		}
 	}
 
 	details[0] = fmt.Sprintf("%s final=%.4f", details[0], score)
