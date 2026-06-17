@@ -121,7 +121,15 @@ func (cs *ChunkStore) GetAllByFile(filePath string) ([]*ChunkMeta, error) {
 }
 
 func (cs *ChunkStore) DeleteByFile(filePath string) error {
-	return cs.kv.DeleteWithPrefix([]byte("chunk:" + filePath))
+	prefix := []byte("chunk:" + filePath)
+	hasChunks, err := cs.kv.HasPrefix(prefix)
+	if err != nil {
+		return err
+	}
+	if !hasChunks {
+		return nil
+	}
+	return cs.kv.DeleteWithPrefix(prefix)
 }
 
 func (cs *ChunkStore) SearchBySymbol(query string, chunkTypes []string) ([]*ChunkMeta, error) {
