@@ -93,6 +93,24 @@ func (cs *ChunkStore) Delete(id string) error {
 	return cs.kv.Delete([]byte("chunk:" + id))
 }
 
+// GetAllByFile returns all chunks whose ID starts with filePath.
+// Covers both the whole-file chunk (ID == filePath) and range chunks (ID == filePath:start-end).
+func (cs *ChunkStore) GetAllByFile(filePath string) ([]*ChunkMeta, error) {
+	raw, err := cs.kv.GetWithPrefix([]byte("chunk:" + filePath))
+	if err != nil {
+		return nil, err
+	}
+	chunks := make([]*ChunkMeta, 0, len(raw))
+	for _, data := range raw {
+		var meta ChunkMeta
+		if err := json.Unmarshal(data, &meta); err != nil {
+			return nil, fmt.Errorf("unmarshal chunk meta: %w", err)
+		}
+		chunks = append(chunks, &meta)
+	}
+	return chunks, nil
+}
+
 func (cs *ChunkStore) PutAll(metas []ChunkMeta) error {
 	pairs := make([]KVPair, 0, len(metas))
 	for _, meta := range metas {
