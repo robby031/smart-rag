@@ -119,13 +119,13 @@ func tokenizeCode(code string) []string {
 	}
 
 	for _, r := range code {
-		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+		switch r {
+		case ' ', '\t', '\n', '\r':
 			flush()
-		} else if r == '(' || r == ')' || r == '{' || r == '}' || r == '[' || r == ']' ||
-			r == ';' || r == ',' || r == '.' || r == ':' {
+		case '(', ')', '{', '}', '[', ']', ';', ',', '.', ':':
 			flush()
 			tokens = append(tokens, string(r))
-		} else {
+		default:
 			buf.WriteRune(r)
 		}
 	}

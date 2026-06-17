@@ -29,16 +29,6 @@ func (g *Graph) Callees(funcID string) []string {
 	return g.callGraph.Callees(funcID)
 }
 
-// EdgeDetail returns file and line info for a caller->callee edge.
-func (g *Graph) EdgeDetail(caller, callee string) (file string, line int, ok bool) {
-	key := caller + "\x00" + callee
-	em, found := g.callGraph.EdgeMeta[key]
-	if found {
-		return em.File, em.Line, true
-	}
-	return "", 0, false
-}
-
 // --- Import graph queries ---
 
 // Importers returns packages that import the given package path.
@@ -224,11 +214,3 @@ func (g *Graph) SearchSymbol(query string) []*Node {
 
 // --- Graph summary ---
 
-// Summary returns a human-readable overview of the graph.
-func (g *Graph) Summary() string {
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Call graph: %d nodes, %d edges\n", len(g.callGraph.Nodes), len(g.callGraph.EdgeMeta)))
-	b.WriteString(fmt.Sprintf("Import graph: %d packages\n", len(g.importGraph.OutEdges)))
-	b.WriteString(fmt.Sprintf("Importers (reverse deps): %d packages\n", len(g.importGraph.InEdges)))
-	return b.String()
-}

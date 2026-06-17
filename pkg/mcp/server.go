@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/bagusdwiharianto/smart-rag/pkg/engine"
@@ -208,7 +207,7 @@ func formatResults(resp *engine.Response) string {
 		if r.Score > 0 {
 			out.WriteString(fmt.Sprintf("Score: %.4f\n", r.Score))
 		}
-		_ = strconv.Itoa(i)
+		_ = i
 		out.WriteString("\n")
 	}
 	return out.String()

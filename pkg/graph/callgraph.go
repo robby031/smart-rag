@@ -231,33 +231,15 @@ func (cg *CallGraph) SortedNodes() []*Node {
 	return result
 }
 
-// Save persists the entire graph to BoltDB via GraphStore.
-func (cg *CallGraph) Save() error {
-	if cg.store == nil {
-		return nil
+func storageNode(n *Node) storage.GraphNode {
+	return storage.GraphNode{
+		ID:   n.ID(),
+		Pkg:  n.Pkg,
+		Name: n.Name,
+		Recv: n.Recv,
+		File: n.File,
+		Line: n.Line,
 	}
-	for _, n := range cg.Nodes {
-		if err := cg.store.SaveNode(storageNode(n)); err != nil {
-			return err
-		}
-	}
-	for key, em := range cg.EdgeMeta {
-		parts := strings.SplitN(key, "\x00", 2)
-		if len(parts) == 2 {
-			if err := cg.store.SaveEdge(storage.GraphEdge{
-				Caller: parts[0],
-				Callee: parts[1],
-				Line:   em.Line,
-				File:   em.File,
-			}); err != nil {
-				return err
-			}
-		}
-	}
-	return cg.store.SaveMeta(storage.GraphMeta{
-		NodeCount: len(cg.Nodes),
-		EdgeCount: len(cg.EdgeMeta),
-	})
 }
 
 func (cg *CallGraph) load() {
@@ -287,17 +269,6 @@ func (cg *CallGraph) load() {
 		cg.InEdges[e.Callee][e.Caller] = true
 		key := e.Caller + "\x00" + e.Callee
 		cg.EdgeMeta[key] = &edgeMeta{Line: e.Line, File: e.File}
-	}
-}
-
-func storageNode(n *Node) storage.GraphNode {
-	return storage.GraphNode{
-		ID:   n.ID(),
-		Pkg:  n.Pkg,
-		Name: n.Name,
-		Recv: n.Recv,
-		File: n.File,
-		Line: n.Line,
 	}
 }
 
@@ -369,20 +340,6 @@ func (ig *ImportGraph) Dependents(dep string) []string {
 	}
 	sort.Strings(pkgs)
 	return pkgs
-}
-
-func (ig *ImportGraph) Save() error {
-	if ig.store == nil {
-		return nil
-	}
-	for pkg, deps := range ig.OutEdges {
-		for dep := range deps {
-			if err := ig.store.SaveImport(pkg, dep); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func (ig *ImportGraph) load() {

@@ -36,13 +36,12 @@ type Query struct {
 }
 
 type Result struct {
-	Score   float64               `json:"score,omitempty"`
-	Chunk   *storage.ChunkMeta    `json:"chunk,omitempty"`
-	Match   *searcher.MatchResult `json:"match,omitempty"`
-	Node    *graph.Node           `json:"node,omitempty"`
-	Impact  []graph.ImpactResult  `json:"impact,omitempty"`
-	Related []string              `json:"related,omitempty"`
-	Content string                `json:"content,omitempty"`
+	Score   float64              `json:"score,omitempty"`
+	Chunk   *storage.ChunkMeta   `json:"chunk,omitempty"`
+	Node    *graph.Node          `json:"node,omitempty"`
+	Impact  []graph.ImpactResult `json:"impact,omitempty"`
+	Related []string             `json:"related,omitempty"`
+	Content string               `json:"content,omitempty"`
 }
 
 type Response struct {
@@ -62,12 +61,10 @@ type Engine struct {
 	graph       *graph.Graph
 	callGraph   *graph.CallGraph
 	importGraph *graph.ImportGraph
-	vectorDB    *storage.VectorDB
 	chunkStore  *storage.ChunkStore
-	kvStore     *storage.Store
 }
 
-func New(kvStore *storage.Store, chunkStore *storage.ChunkStore, vectorDB *storage.VectorDB, graphStore *storage.GraphStore) *Engine {
+func New(kvStore *storage.Store, chunkStore *storage.ChunkStore, _ *storage.VectorDB, graphStore *storage.GraphStore) *Engine {
 	chunker := indexer.NewChunker(512)
 	parser := indexer.NewParser()
 	tokenizer := indexer.NewTokenizer()
@@ -88,9 +85,7 @@ func New(kvStore *storage.Store, chunkStore *storage.ChunkStore, vectorDB *stora
 		graph:       graph.NewGraph(cg, ig),
 		callGraph:   cg,
 		importGraph: ig,
-		vectorDB:    vectorDB,
 		chunkStore:  chunkStore,
-		kvStore:     kvStore,
 	}
 }
 
@@ -124,7 +119,6 @@ func (e *Engine) IndexFile(ctx context.Context, filePath, src string) error {
 		e.sparse.AddDocument(vec, ch.ID)
 
 		chunkType := fmt.Sprintf("%d", ch.ChunkType)
-		_ = chunkType // will be stored
 
 		storeMeta := storage.ChunkMeta{
 			ID:         ch.ID,
@@ -189,7 +183,7 @@ func (e *Engine) Query(ctx context.Context, q Query) (*Response, error) {
 	}
 }
 
-func (e *Engine) search(ctx context.Context, q Query, resp *Response) (*Response, error) {
+func (e *Engine) search(_ context.Context, q Query, resp *Response) (*Response, error) {
 	tokens := e.tokenizer.Tokenize(q.Text)
 	freq := make(map[string]int)
 	for tok, count := range tokens {
@@ -227,7 +221,7 @@ func (e *Engine) search(ctx context.Context, q Query, resp *Response) (*Response
 	return resp, nil
 }
 
-func (e *Engine) findDefinition(ctx context.Context, q Query, resp *Response) (*Response, error) {
+func (e *Engine) findDefinition(_ context.Context, q Query, resp *Response) (*Response, error) {
 	nodes := e.graph.SearchSymbol(q.Text)
 	for _, node := range nodes {
 		resp.Results = append(resp.Results, Result{Node: node, Content: fmt.Sprintf("%s (%s:%d)", node.ID(), node.File, node.Line)})
@@ -235,7 +229,7 @@ func (e *Engine) findDefinition(ctx context.Context, q Query, resp *Response) (*
 	return resp, nil
 }
 
-func (e *Engine) findReferences(ctx context.Context, q Query, resp *Response) (*Response, error) {
+func (e *Engine) findReferences(_ context.Context, q Query, resp *Response) (*Response, error) {
 	xref := e.graph.Xref(q.Text)
 	for _, ref := range xref.References {
 		resp.Results = append(resp.Results, Result{Content: ref})
@@ -246,7 +240,7 @@ func (e *Engine) findReferences(ctx context.Context, q Query, resp *Response) (*
 	return resp, nil
 }
 
-func (e *Engine) getCallers(ctx context.Context, q Query, resp *Response) (*Response, error) {
+func (e *Engine) getCallers(_ context.Context, q Query, resp *Response) (*Response, error) {
 	callers := e.graph.Callers(q.Text)
 	for _, c := range callers {
 		resp.Results = append(resp.Results, Result{Content: c})
@@ -257,7 +251,7 @@ func (e *Engine) getCallers(ctx context.Context, q Query, resp *Response) (*Resp
 	return resp, nil
 }
 
-func (e *Engine) getCallees(ctx context.Context, q Query, resp *Response) (*Response, error) {
+func (e *Engine) getCallees(_ context.Context, q Query, resp *Response) (*Response, error) {
 	callees := e.graph.Callees(q.Text)
 	for _, c := range callees {
 		resp.Results = append(resp.Results, Result{Content: c})
@@ -268,7 +262,7 @@ func (e *Engine) getCallees(ctx context.Context, q Query, resp *Response) (*Resp
 	return resp, nil
 }
 
-func (e *Engine) impactQuery(ctx context.Context, q Query, resp *Response) (*Response, error) {
+func (e *Engine) impactQuery(_ context.Context, q Query, resp *Response) (*Response, error) {
 	depth := q.MaxDepth
 	if depth <= 0 {
 		depth = 3
@@ -288,7 +282,7 @@ func (e *Engine) impactQuery(ctx context.Context, q Query, resp *Response) (*Res
 	return resp, nil
 }
 
-func (e *Engine) getContextPack(ctx context.Context, q Query, resp *Response) (*Response, error) {
+func (e *Engine) getContextPack(_ context.Context, q Query, resp *Response) (*Response, error) {
 	chunk, err := e.chunkStore.Get(q.Text)
 	if err != nil {
 		return nil, fmt.Errorf("context not found: %w", err)
@@ -301,7 +295,7 @@ func (e *Engine) getContextPack(ctx context.Context, q Query, resp *Response) (*
 	return resp, nil
 }
 
-func (e *Engine) readSnippet(ctx context.Context, q Query, resp *Response) (*Response, error) {
+func (e *Engine) readSnippet(_ context.Context, q Query, resp *Response) (*Response, error) {
 	parts := strings.SplitN(q.Text, ":", 3)
 	if len(parts) < 2 {
 		return nil, fmt.Errorf("format: file:line or file:startLine-endLine")

@@ -75,7 +75,7 @@ func (c *Chunker) Chunk(decls []ParsedDecl, filePath string, meta FileMeta) []Ch
 	return chunks
 }
 
-func (c *Chunker) makeChunk(d ParsedDecl, filePath string, meta FileMeta, tested []string, content string, tokens []string) Chunk {
+func (c *Chunker) makeChunk(d ParsedDecl, filePath string, meta FileMeta, tested []string, content string, _ []string) Chunk {
 	return Chunk{
 		ID:            fmt.Sprintf("%s:%d-%d", filePath, d.StartLine, d.EndLine),
 		FilePath:      filePath,
@@ -99,15 +99,28 @@ func (c *Chunker) splitLargeDecl(d ParsedDecl, filePath string, meta FileMeta, t
 	depth := 0
 	buf := &strings.Builder{}
 	tokCount := 0
+	subStart := base
 
 	flush := func(end int) {
 		if buf.Len() == 0 {
 			return
 		}
 		content := strings.TrimRight(buf.String(), "\n")
-		chunks = append(chunks, c.makeChunk(d, filePath, meta, tested, content, tokenizeCode(content)))
+		chunks = append(chunks, Chunk{
+			ID:            fmt.Sprintf("%s:%d-%d", filePath, subStart, end),
+			FilePath:      filePath,
+			ChunkType:     ChunkBlock,
+			StartLine:     subStart,
+			EndLine:       end,
+			Content:       content,
+			Package:       meta.Package,
+			Imports:       meta.Imports,
+			TestedSymbols: tested,
+			SymbolName:    d.Name,
+		})
 		buf.Reset()
 		tokCount = 0
+		subStart = end + 1
 	}
 
 	for i, line := range lines {

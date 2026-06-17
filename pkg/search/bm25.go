@@ -115,21 +115,6 @@ func (b *BM25) Score(query map[string]int) []ScoredDoc {
 	return results
 }
 
-func (b *BM25) scoreDoc(docIdx int, query map[string]int) float64 {
-	var score float64
-	for term := range query {
-		tf := b.termFreqs[docIdx][term]
-		if tf == 0 {
-			continue
-		}
-		idf := b.idf[term]
-		numer := float64(tf) * (b.k1 + 1)
-		denom := float64(tf) + b.k1*b.lenNorm[docIdx]
-		score += idf * numer / denom
-	}
-	return score
-}
-
 func (b *BM25) Search(query map[string]int, topK int) []ScoredDoc {
 	scored := b.Score(query)
 	if len(scored) <= topK {
