@@ -6,6 +6,12 @@ RAG-based code intelligence engine with MCP server. Index your codebase and quer
 
 ![smart-rag architecture](docs/architecture.svg)
 
+## Quick Start
+
+[📖 **Setup Guide for AI Assistants**](docs/SETUP_PROMPT.md) — Share this file with any AI to get guided installation on your system.
+
+---
+
 ## Usage
 
 ### Build
