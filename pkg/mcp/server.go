@@ -17,7 +17,7 @@ type SmartRAGServer struct {
 
 func NewServer(e *engine.Engine) *SmartRAGServer {
 	s := &SmartRAGServer{
-		mcpServer: server.NewMCPServer("smart-rag", "0.2.1"),
+		mcpServer: server.NewMCPServer("smart-rag", "0.2.2"),
 		engine:    e,
 	}
 	s.registerTools()
