@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/philippgille/chromem-go"
 )
@@ -93,8 +94,6 @@ func (cs *ChunkStore) Delete(id string) error {
 	return cs.kv.Delete([]byte("chunk:" + id))
 }
 
-// GetAllByFile returns all chunks whose ID starts with filePath.
-// Covers both the whole-file chunk (ID == filePath) and range chunks (ID == filePath:start-end).
 func (cs *ChunkStore) GetAllByFile(filePath string) ([]*ChunkMeta, error) {
 	raw, err := cs.kv.GetWithPrefix([]byte("chunk:" + filePath))
 	if err != nil {
@@ -109,6 +108,38 @@ func (cs *ChunkStore) GetAllByFile(filePath string) ([]*ChunkMeta, error) {
 		chunks = append(chunks, &meta)
 	}
 	return chunks, nil
+}
+
+func (cs *ChunkStore) DeleteByFile(filePath string) error {
+	return cs.kv.DeleteWithPrefix([]byte("chunk:" + filePath))
+}
+
+func (cs *ChunkStore) SearchBySymbol(query string, chunkTypes []string) ([]*ChunkMeta, error) {
+	queryLower := strings.ToLower(query)
+	typeSet := make(map[string]bool, len(chunkTypes))
+	for _, t := range chunkTypes {
+		typeSet[t] = true
+	}
+	raw, err := cs.kv.GetWithPrefix([]byte("chunk:"))
+	if err != nil {
+		return nil, err
+	}
+	var results []*ChunkMeta
+	for _, data := range raw {
+		var meta ChunkMeta
+		if err := json.Unmarshal(data, &meta); err != nil {
+			continue
+		}
+		if !typeSet[meta.ChunkType] {
+			continue
+		}
+		if !strings.Contains(strings.ToLower(meta.SymbolName), queryLower) {
+			continue
+		}
+		m := meta
+		results = append(results, &m)
+	}
+	return results, nil
 }
 
 func (cs *ChunkStore) PutAll(metas []ChunkMeta) error {

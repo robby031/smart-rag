@@ -23,6 +23,10 @@ func (e *Engine) indexFileWith(
 	addDoc func(map[string]int, string),
 	chunkSink func([]storage.ChunkMeta) error,
 ) error {
+	if err := e.chunkStore.DeleteByFile(filePath); err != nil {
+		return fmt.Errorf("delete stale chunks %s: %w", filePath, err)
+	}
+
 	astFile, decls, fileInfo, err := e.parser.ParseFile(filePath, src)
 	if err != nil {
 		return fmt.Errorf("parse: %w", err)
@@ -59,6 +63,8 @@ func (e *Engine) indexFileWith(
 	if err := chunkSink(storeMetas); err != nil {
 		return fmt.Errorf("store chunks: %w", err)
 	}
+
+	e.callGraph.DeleteByFile(filePath)
 
 	if err := e.callGraph.ParseAST(astFile, e.parser.FileSet(), filePath, fileInfo.Package); err != nil {
 		return fmt.Errorf("callgraph: %w", err)

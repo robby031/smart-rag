@@ -9,14 +9,16 @@ import (
 )
 
 type CallGraph struct {
-	mu           sync.Mutex
-	Nodes        map[string]*Node
-	OutEdges     map[string]map[string]bool
-	InEdges      map[string]map[string]bool
-	Fset         *token.FileSet
-	store        *storage.GraphStore
-	dirtyNodes   map[string]bool
-	dirtyCallers map[string]bool
+	mu               sync.Mutex
+	Nodes            map[string]*Node
+	OutEdges         map[string]map[string]bool
+	InEdges          map[string]map[string]bool
+	Fset             *token.FileSet
+	store            *storage.GraphStore
+	dirtyNodes       map[string]bool
+	dirtyCallers     map[string]bool
+	deletedNodeIDs   []string
+	deletedCallerIDs []string
 }
 
 func NewCallGraph() *CallGraph {
@@ -129,6 +131,34 @@ func (cg *CallGraph) TraverseBFS(start string, maxDepth int) []string {
 		}
 	}
 	return result
+}
+
+func (cg *CallGraph) DeleteByFile(filePath string) {
+	cg.mu.Lock()
+	defer cg.mu.Unlock()
+
+	var deleted []string
+	for id, node := range cg.Nodes {
+		if node.File == filePath {
+			deleted = append(deleted, id)
+		}
+	}
+	for _, id := range deleted {
+		delete(cg.Nodes, id)
+		delete(cg.OutEdges, id)
+		delete(cg.dirtyNodes, id)
+		delete(cg.dirtyCallers, id)
+	}
+	// Remove stale in-edge entries that pointed to the deleted callers.
+	for callee := range cg.InEdges {
+		for _, id := range deleted {
+			delete(cg.InEdges[callee], id)
+		}
+	}
+	if cg.store != nil && len(deleted) > 0 {
+		cg.deletedNodeIDs = append(cg.deletedNodeIDs, deleted...)
+		cg.deletedCallerIDs = append(cg.deletedCallerIDs, deleted...)
+	}
 }
 
 func (cg *CallGraph) Stats() map[string]int {

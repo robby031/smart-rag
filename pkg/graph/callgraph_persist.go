@@ -10,6 +10,18 @@ func (cg *CallGraph) Flush() error {
 	if cg.store == nil {
 		return nil
 	}
+	if len(cg.deletedNodeIDs) > 0 {
+		if err := cg.store.DeleteNodesByIDs(cg.deletedNodeIDs); err != nil {
+			return err
+		}
+		cg.deletedNodeIDs = nil
+	}
+	for _, callerID := range cg.deletedCallerIDs {
+		if err := cg.store.DeleteEdgesByCaller(callerID); err != nil {
+			return err
+		}
+	}
+	cg.deletedCallerIDs = nil
 	if len(cg.dirtyNodes) > 0 {
 		nodes := make([]storage.GraphNode, 0, len(cg.dirtyNodes))
 		for id := range cg.dirtyNodes {

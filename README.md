@@ -183,7 +183,7 @@ make clean        # Remove artifacts
 
 - `REPO=path` — source repository (default: `.`)
 - `DB=path` — database directory (default: `./rag-data`)
-- `VERSION=x.y.z` — binary version (default: `0.1.0`)
+- `VERSION=x.y.z` — binary version (default: `0.2.0`)
 
 ## Performance
 
@@ -192,7 +192,7 @@ Benchmarked on the smart-rag repository itself (30 Go files, 3659 lines).
 ```
 smart-rag performance matrix
 ================================
-  Version       : 0.1.0
+  Version       : 0.2.0
   Repository    : /Users/bagusdwiharianto/Development/go/smart-rag
   Go files      : 30 (3659 lines)
   Chunks        : 247
