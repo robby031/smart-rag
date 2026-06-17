@@ -13,7 +13,6 @@ type VectorDB struct {
 	coll *chromem.Collection
 }
 
-// NewVectorDB creates a chromem-go vector DB. Empty persistPath = in-memory.
 func NewVectorDB(persistPath string) (*VectorDB, error) {
 	var db *chromem.DB
 	var err error
@@ -94,7 +93,6 @@ func (cs *ChunkStore) Delete(id string) error {
 	return cs.kv.Delete([]byte("chunk:" + id))
 }
 
-// PutAll writes all metas in a single transaction (one fsync).
 func (cs *ChunkStore) PutAll(metas []ChunkMeta) error {
 	pairs := make([]KVPair, 0, len(metas))
 	for _, meta := range metas {
