@@ -292,7 +292,7 @@ func TestContextPackRegressionReturnsRequestedChunk(t *testing.T) {
 	resp, err := eng.Query(context.Background(), Query{
 		Type:      QueryContextPack,
 		Text:      "pkg/engine/context.go:9-22",
-		MaxTokens: 80,
+		MaxTokens: 160,
 	})
 	if err != nil {
 		t.Fatalf("Query context pack: %v", err)
@@ -303,11 +303,14 @@ func TestContextPackRegressionReturnsRequestedChunk(t *testing.T) {
 	if got := resp.Results[0].Chunk.ID; got != "pkg/engine/context.go:9-22" {
 		t.Fatalf("context chunk mismatch: %s", got)
 	}
-	if len(resp.Results[0].Content) > 80 {
+	if len(resp.Results[0].Content) > 160 {
 		t.Fatalf("context content exceeded max token budget: %d", len(resp.Results[0].Content))
 	}
-	if !strings.HasPrefix(resp.Results[0].Content, "func (e *Engine) getContextPack") {
+	if !strings.HasPrefix(resp.Results[0].Content, "## primary") {
 		t.Fatalf("unexpected context content: %q", resp.Results[0].Content)
+	}
+	if !strings.Contains(resp.Results[0].Content, "Chunk: pkg/engine/context.go:9-22") {
+		t.Fatalf("context pack did not include primary chunk metadata: %q", resp.Results[0].Content)
 	}
 }
 
