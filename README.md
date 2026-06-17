@@ -205,22 +205,22 @@ Benchmarked on the smart-rag repository itself (30 Go files, 3659 lines).
 ```
 smart-rag performance matrix
 ================================
-  Version       : 0.3.2
+  Version       : 0.3.3
   Repository    : /Users/bagusdwiharianto/Development/go/smart-rag
-  Go files      : 43 (6059 lines)
-  Chunks        : 335
-  Graph nodes   : 248
-  Graph edges   : 948
-  Index time    : 139ms
+  Go files      : 45 (7551 lines)
+  Chunks        : 413
+  Graph nodes   : 306
+  Graph edges   : 1207
+  Index time    : 154ms
 --------------------------------
   Metric                      Target        Actual
-  Cold index (  43 files)  ok  < 5-8s       139ms
-  Projected   (1000 files) ok  < 5-8s       ~3.239s  [from 43 files]
-  Incremental (    1 file) ok  < 1-2s       132ms
-  Query search             ok  < 50-80ms    median 137µs     p95 370µs  [335 chunks]
-  Query find-def           ok  < 50-80ms    median 1ms      p95 1ms  [335 chunks]
-  Query callers            ok  < 50-80ms    median < 1µs     p95 < 1µs  [335 chunks]
+  Cold index (  45 files)  ok  < 5-8s       154ms
+  Projected   (1000 files) ok  < 5-8s       ~3.428s  [from 45 files]
+  Incremental (    1 file) ok  < 1-2s       161ms
+  Query search             ok  < 50-80ms    median 4ms     p95 370µs  [413 chunks]
+  Query find-def           ok  < 50-80ms    median 2ms      p95 1ms  [413 chunks]
+  Query callers            ok  < 50-80ms    median < 1µs     p95 < 1µs  [413 chunks]
   Binary size              ok  < 15-20 MB   6.9 MB
-  RAM during index         ok  < 80-120 MB  2.3 MB heap delta
-  Query 100k docs          warn  ~20-40ms     ~41ms projected  [linear from 335 chunks]
+  RAM during index         ok  < 80-120 MB  2.8 MB heap delta
+  Query 100k docs          warn  ~20-40ms     ~1.031s projected  [linear from 413 chunks]
 ```
