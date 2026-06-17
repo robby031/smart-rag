@@ -32,6 +32,7 @@ func (e *Engine) search(_ context.Context, q Query, resp *Response) (*Response, 
 		fetchK = topK
 	}
 
+	queryReachable := e.queryReachableChunkSet(q.Text, tokens)
 	var candidates []Result
 	for _, sr := range e.bm25.Search(freq, fetchK) {
 		chunk, err := e.chunkStore.Get(sr.ID)
@@ -44,7 +45,7 @@ func (e *Engine) search(_ context.Context, q Query, resp *Response) (*Response, 
 		if q.File != "" && !strings.Contains(chunk.FilePath, q.File) {
 			continue
 		}
-		score, details := rankSearchResult(q, tokens, sr.Score, chunk)
+		score, details := rankSearchResult(q, tokens, sr.Score, chunk, queryReachable)
 		candidates = append(candidates, Result{
 			Score:   score,
 			Chunk:   chunk,
@@ -66,7 +67,7 @@ func (e *Engine) search(_ context.Context, q Query, resp *Response) (*Response, 
 	return resp, nil
 }
 
-func rankSearchResult(q Query, queryTokens map[string]int, bm25Score float64, chunk *storage.ChunkMeta) (float64, []string) {
+func rankSearchResult(q Query, queryTokens map[string]int, bm25Score float64, chunk *storage.ChunkMeta, queryReachable map[string]bool) (float64, []string) {
 	score := bm25Score
 	details := []string{fmt.Sprintf("score bm25=%.4f", bm25Score)}
 
@@ -114,7 +115,9 @@ func rankSearchResult(q Query, queryTokens map[string]int, bm25Score float64, ch
 		details = append(details, "boost path_filter=0.0500")
 	}
 
-	if weight := chunkContextWeight(chunk); weight < 1 {
+	if queryReachable[chunk.ID] && chunk.Reachability == ReachabilityUnreachable {
+		details = append(details, "boost query_reachable_root=skip_unreachable_penalty")
+	} else if weight := chunkContextWeight(chunk); weight < 1 {
 		score *= weight
 		details = append(details, fmt.Sprintf("penalty reachability=%s weight=%.4f", valueOrUnknown(chunk.Reachability), weight))
 	}
