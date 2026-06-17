@@ -55,6 +55,7 @@ make run-full REPO=/path/to/your/project
 | `--repo`   | `.`      | Path to the code repository to index |
 | `--db`     | `./rag-data` | Path to store the RAG database    |
 | `--full`   | `false`  | Force full re-index instead of incremental |
+| `--pruning`| `soft`   | Index pruning mode: `off`, `soft`, or `hard` |
 | `--version`| `false`  | Show version                        |
 
 ### Docker Hub (no build required)
@@ -186,7 +187,16 @@ make clean        # Remove artifacts
 
 - `REPO=path` — source repository (default: `.`)
 - `DB=path` — database directory (default: `./rag-data`)
+- `PRUNING=off|soft|hard` — index pruning mode (default: `soft`)
 - `VERSION=x.y.z` — binary version (default: `0.3.2`)
+
+`--pruning` maps to the index pruning setting `index.pruning.mode`.
+
+Pruning modes:
+
+- `off` — keep all indexed chunks and ignore pruning metadata during search/context assembly.
+- `soft` — default; keep all chunks, lower search weight for unreachable/boilerplate chunks, and skip them from automatic context expansion.
+- `hard` — delete unreachable/boilerplate chunks from the chunk store after indexing, then rebuild BM25 from remaining chunks.
 
 ## Performance
 
