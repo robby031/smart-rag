@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/robby031/smart-rag/pkg/storage"
 )
 
 func (e *Engine) getContextPack(_ context.Context, q Query, resp *Response) (*Response, error) {
@@ -34,22 +36,37 @@ func (e *Engine) readSnippet(_ context.Context, q Query, resp *Response) (*Respo
 		endLine = startLine
 	}
 
-	chunk, err := e.chunkStore.Get(filePath)
+	chunks, err := e.chunkStore.GetAllByFile(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("file not found: %w", err)
+		return nil, fmt.Errorf("file lookup failed: %w", err)
 	}
-	lines := strings.Split(chunk.Content, "\n")
-	offset := chunk.StartLine
+	if len(chunks) == 0 {
+		return nil, fmt.Errorf("file not found: %s", filePath)
+	}
+
 	var snippet []string
-	for i, line := range lines {
-		lineNum := offset + i
-		if lineNum >= startLine && lineNum <= endLine {
-			snippet = append(snippet, line)
+	var bestChunk *storage.ChunkMeta
+	for _, chunk := range chunks {
+		if chunk.EndLine < startLine || chunk.StartLine > endLine {
+			continue
 		}
+		if bestChunk == nil {
+			bestChunk = chunk
+		}
+		lines := strings.Split(chunk.Content, "\n")
+		for i, line := range lines {
+			lineNum := chunk.StartLine + i
+			if lineNum >= startLine && lineNum <= endLine {
+				snippet = append(snippet, line)
+			}
+		}
+	}
+	if bestChunk == nil {
+		bestChunk = chunks[0]
 	}
 	resp.Results = append(resp.Results, Result{
 		Content: strings.Join(snippet, "\n"),
-		Chunk:   chunk,
+		Chunk:   bestChunk,
 	})
 	return resp, nil
 }
