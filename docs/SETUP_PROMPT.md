@@ -212,6 +212,7 @@ After setup, test in Claude Desktop:
 1. Open Chat
 2. Click tools icon at bottom → Smart RAG tools will be visible
 3. Try queries:
+   - `rag_status`: "check smart-rag health"
    - `search_code`: "keyword search in codebase"
    - `find_definition`: "function name to find definition"
    - `get_callers`: "function ID"
