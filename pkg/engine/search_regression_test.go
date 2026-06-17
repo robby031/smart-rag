@@ -14,18 +14,7 @@ import (
 func regressionTestEngine(t *testing.T) *Engine {
 	t.Helper()
 
-	dir := t.TempDir()
-	kv, err := storage.OpenStore(filepath.Join(dir, "kv"))
-	if err != nil {
-		t.Fatalf("OpenStore: %v", err)
-	}
-	t.Cleanup(func() { kv.Close() })
-
-	chunkStore := storage.NewChunkStore(kv)
-	tokenizer := indexer.NewTokenizer()
-	bm25 := search.NewBM25()
-
-	chunks := []storage.ChunkMeta{
+	return regressionTestEngineWithChunks(t, []storage.ChunkMeta{
 		{
 			ID:         "pkg/engine/context.go:9-22",
 			FilePath:   "pkg/engine/context.go",
@@ -71,7 +60,22 @@ func regressionTestEngine(t *testing.T) *Engine {
 			EndLine:    8,
 			Content:    "Smart RAG setup guide for docker install and MCP client configuration.",
 		},
+	})
+}
+
+func regressionTestEngineWithChunks(t *testing.T, chunks []storage.ChunkMeta) *Engine {
+	t.Helper()
+
+	dir := t.TempDir()
+	kv, err := storage.OpenStore(filepath.Join(dir, "kv"))
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
 	}
+	t.Cleanup(func() { kv.Close() })
+
+	chunkStore := storage.NewChunkStore(kv)
+	tokenizer := indexer.NewTokenizer()
+	bm25 := search.NewBM25()
 
 	if err := chunkStore.PutAll(chunks); err != nil {
 		t.Fatalf("PutAll: %v", err)
@@ -111,6 +115,9 @@ func TestSearchRegressionExactSymbolRanksExpectedChunkFirst(t *testing.T) {
 	if resp.Results[0].Score <= 0 {
 		t.Fatalf("expected positive score for top result, got %.4f", resp.Results[0].Score)
 	}
+	if len(resp.Results[0].Related) == 0 || !strings.Contains(resp.Results[0].Related[0], "score bm25=") {
+		t.Fatalf("expected explainable score details, got %v", resp.Results[0].Related)
+	}
 }
 
 func TestSearchRegressionLanguageAndPathFilters(t *testing.T) {
@@ -136,6 +143,130 @@ func TestSearchRegressionLanguageAndPathFilters(t *testing.T) {
 		if !strings.Contains(result.Chunk.FilePath, "pkg/engine") {
 			t.Fatalf("path filter leaked result outside pkg/engine: %s", result.Chunk.FilePath)
 		}
+	}
+}
+
+func TestSearchRegressionExactSymbolBoost(t *testing.T) {
+	eng := regressionTestEngineWithChunks(t, []storage.ChunkMeta{
+		{
+			ID:         "pkg/usecase/usage.go:1-8",
+			FilePath:   "pkg/usecase/usage.go",
+			SymbolName: "UseTargetSymbol",
+			StartLine:  1,
+			EndLine:    8,
+			Content:    "func UseTargetSymbol() { TargetSymbol(); TargetSymbol() }",
+		},
+		{
+			ID:         "pkg/domain/target.go:1-5",
+			FilePath:   "pkg/domain/target.go",
+			SymbolName: "TargetSymbol",
+			StartLine:  1,
+			EndLine:    5,
+			Content:    "func TargetSymbol() { return }",
+		},
+		{
+			ID:         "pkg/other/unrelated.go:1-5",
+			FilePath:   "pkg/other/unrelated.go",
+			SymbolName: "Unrelated",
+			StartLine:  1,
+			EndLine:    5,
+			Content:    "func Unrelated() { return }",
+		},
+	})
+
+	resp, err := eng.Query(context.Background(), Query{
+		Type: QuerySearch,
+		Text: "TargetSymbol",
+		TopK: 2,
+	})
+	if err != nil {
+		t.Fatalf("Query search: %v", err)
+	}
+	if len(resp.Results) == 0 {
+		t.Fatal("expected search results")
+	}
+	if got, want := resp.Results[0].Chunk.ID, "pkg/domain/target.go:1-5"; got != want {
+		t.Fatalf("exact symbol boost did not rank definition first: want %s, got %s", want, got)
+	}
+	if !strings.Contains(strings.Join(resp.Results[0].Related, "\n"), "boost exact_symbol=") {
+		t.Fatalf("expected exact symbol boost explanation, got %v", resp.Results[0].Related)
+	}
+}
+
+func TestSearchRegressionDeterministicTieBreakers(t *testing.T) {
+	eng := regressionTestEngineWithChunks(t, []storage.ChunkMeta{
+		{
+			ID:         "pkg/beta/file.go:1-5",
+			FilePath:   "pkg/beta/file.go",
+			SymbolName: "AlphaSymbol",
+			StartLine:  1,
+			EndLine:    5,
+			Content:    "func SharedRankingToken() { stable tie breaker token }",
+		},
+		{
+			ID:         "pkg/alpha/file.go:20-25",
+			FilePath:   "pkg/alpha/file.go",
+			SymbolName: "BetaSymbol",
+			StartLine:  20,
+			EndLine:    25,
+			Content:    "func SharedRankingToken() { stable tie breaker token }",
+		},
+		{
+			ID:         "pkg/alpha/file.go:10-15",
+			FilePath:   "pkg/alpha/file.go",
+			SymbolName: "AlphaSymbol",
+			StartLine:  10,
+			EndLine:    15,
+			Content:    "func SharedRankingToken() { stable tie breaker token }",
+		},
+		{
+			ID:         "pkg/other/first.go:1-5",
+			FilePath:   "pkg/other/first.go",
+			SymbolName: "OtherFirst",
+			StartLine:  1,
+			EndLine:    5,
+			Content:    "func OtherFirst() { unrelated content }",
+		},
+		{
+			ID:         "pkg/other/second.go:1-5",
+			FilePath:   "pkg/other/second.go",
+			SymbolName: "OtherSecond",
+			StartLine:  1,
+			EndLine:    5,
+			Content:    "func OtherSecond() { unrelated content }",
+		},
+	})
+
+	var previous []string
+	for i := 0; i < 5; i++ {
+		resp, err := eng.Query(context.Background(), Query{
+			Type: QuerySearch,
+			Text: "shared ranking token",
+			TopK: 3,
+		})
+		if err != nil {
+			t.Fatalf("Query search: %v", err)
+		}
+		if len(resp.Results) != 3 {
+			t.Fatalf("expected 3 tied results, got %d: %v", len(resp.Results), resp.Results)
+		}
+		got := []string{
+			resp.Results[0].Chunk.ID,
+			resp.Results[1].Chunk.ID,
+			resp.Results[2].Chunk.ID,
+		}
+		want := []string{
+			"pkg/alpha/file.go:10-15",
+			"pkg/alpha/file.go:20-25",
+			"pkg/beta/file.go:1-5",
+		}
+		if strings.Join(got, "|") != strings.Join(want, "|") {
+			t.Fatalf("tie-break order mismatch: want %v, got %v", want, got)
+		}
+		if previous != nil && strings.Join(got, "|") != strings.Join(previous, "|") {
+			t.Fatalf("search order changed between runs: previous %v, got %v", previous, got)
+		}
+		previous = got
 	}
 }
 
