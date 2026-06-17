@@ -22,6 +22,7 @@ type Engine struct {
 	callGraph   *graph.CallGraph
 	importGraph *graph.ImportGraph
 	chunkStore  *storage.ChunkStore
+	pruningMode PruningMode
 
 	statusMu         sync.RWMutex
 	runtimeInfo      RuntimeInfo
@@ -46,6 +47,7 @@ func New(kvStore *storage.Store, chunkStore *storage.ChunkStore, _ *storage.Vect
 		callGraph:   cg,
 		importGraph: ig,
 		chunkStore:  chunkStore,
+		pruningMode: PruningModeSoft,
 	}
 }
 
