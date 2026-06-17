@@ -66,8 +66,8 @@ func rankSearchResult(q Query, queryTokens map[string]int, bm25Score float64, ch
 
 	symbol := strings.ToLower(chunk.SymbolName)
 	if symbol != "" && normalizeSearchText(q.Text) == normalizeSearchText(chunk.SymbolName) {
-		score += 0.35
-		details = append(details, "boost exact_symbol=0.3500")
+		score += 2.0
+		details = append(details, "boost exact_symbol=2.0000")
 	}
 
 	var symbolBoost float64
