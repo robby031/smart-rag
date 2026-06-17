@@ -118,7 +118,7 @@ func (gs *GraphStore) LoadMeta() (*GraphMeta, error) {
 	return &meta, nil
 }
 
-// --- Import graph persistence ---
+// Import graph persistence
 const importPrefix = "import:"
 
 func (gs *GraphStore) SaveImport(pkg, dep string) error {
