@@ -163,7 +163,7 @@ Run `make install` or add to your MCP client config:
 
 ### Available MCP Tools
 
-- `search_code` — hybrid search (BM25 + sparse vector)
+- `search_code` — ranked BM25 code search with stable tie-breakers and filters
 - `find_definition` — go-to-definition for a symbol
 - `find_references` — find all usages of a symbol
 - `get_callers` / `get_callees` — call graph navigation
