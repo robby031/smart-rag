@@ -3,9 +3,11 @@ package search
 import (
 	"math"
 	"sort"
+	"sync"
 )
 
 type SparseRetriever struct {
+	mu          sync.Mutex
 	vectors     []map[string]float64
 	idf         map[string]float64
 	docCount    int
@@ -22,6 +24,8 @@ func NewSparseRetriever() *SparseRetriever {
 }
 
 func (s *SparseRetriever) AddDocument(vec map[string]float64, docID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	idx := s.docCount
 	s.vectors = append(s.vectors, vec)
 	s.DocIDs = append(s.DocIDs, docID)

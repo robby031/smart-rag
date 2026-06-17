@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/bagusdwiharianto/smart-rag/pkg/storage"
 )
@@ -29,6 +30,7 @@ func (n *Node) ID() string {
 
 // CallGraph uses adjacency lists for O(1) neighbor lookups.
 type CallGraph struct {
+	mu       sync.Mutex
 	Nodes    map[string]*Node
 	OutEdges map[string]map[string]bool // caller -> set of callees
 	InEdges  map[string]map[string]bool // callee -> set of callers
@@ -125,6 +127,8 @@ func (cg *CallGraph) ParseFile(filePath, src string, pkg string) error {
 // ParseAST processes an already-parsed AST, avoiding a second parse.
 // fset must be the FileSet that was used to parse f, so position lookups are valid.
 func (cg *CallGraph) ParseAST(f *ast.File, fset *token.FileSet, filePath, pkg string) error {
+	cg.mu.Lock()
+	defer cg.mu.Unlock()
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.FuncDecl:
@@ -295,6 +299,7 @@ func (cg *CallGraph) load() {
 // --- ImportGraph with adjacency list ---
 
 type ImportGraph struct {
+	mu       sync.Mutex
 	OutEdges map[string]map[string]bool // pkg -> set of deps
 	InEdges  map[string]map[string]bool // dep -> set of pkgs
 	store    *storage.GraphStore
@@ -327,6 +332,8 @@ func (ig *ImportGraph) AddFile(pkg, path, src string) error {
 
 // AddAST processes imports from an already-parsed AST, avoiding re-parsing.
 func (ig *ImportGraph) AddAST(pkg string, f *ast.File) error {
+	ig.mu.Lock()
+	defer ig.mu.Unlock()
 	if ig.OutEdges[pkg] == nil {
 		ig.OutEdges[pkg] = make(map[string]bool)
 	}

@@ -3,7 +3,11 @@ package engine
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/bagusdwiharianto/smart-rag/pkg/graph"
 	"github.com/bagusdwiharianto/smart-rag/pkg/indexer"
@@ -51,17 +55,19 @@ type Response struct {
 }
 
 type Engine struct {
-	chunker     *indexer.Chunker
-	parser      *indexer.Parser
-	tokenizer   *indexer.Tokenizer
-	bm25        *search.BM25
-	sparse      *search.SparseRetriever
-	hybrid      *search.HybridSearch
-	astSearch   *searcher.ASTSearch
-	graph       *graph.Graph
-	callGraph   *graph.CallGraph
-	importGraph *graph.ImportGraph
-	chunkStore  *storage.ChunkStore
+	chunker      *indexer.Chunker
+	parser       *indexer.Parser
+	tokenizer    *indexer.Tokenizer
+	bm25         *search.BM25
+	sparse       *search.SparseRetriever
+	hybrid       *search.HybridSearch
+	astSearch    *searcher.ASTSearch
+	graph        *graph.Graph
+	callGraph    *graph.CallGraph
+	importGraph  *graph.ImportGraph
+	chunkStore   *storage.ChunkStore
+	pendingMu    sync.Mutex
+	pendingChunks []storage.ChunkMeta
 }
 
 func New(kvStore *storage.Store, chunkStore *storage.ChunkStore, _ *storage.VectorDB, graphStore *storage.GraphStore) *Engine {
@@ -130,9 +136,9 @@ func (e *Engine) IndexFile(ctx context.Context, filePath, src string) error {
 			Content:    ch.Content,
 		})
 	}
-	if err := e.chunkStore.PutAll(storeMetas); err != nil {
-		return fmt.Errorf("store chunks: %w", err)
-	}
+	e.pendingMu.Lock()
+	e.pendingChunks = append(e.pendingChunks, storeMetas...)
+	e.pendingMu.Unlock()
 
 	if err := e.callGraph.ParseAST(astFile, e.parser.FileSet(), filePath, fileInfo.Package); err != nil {
 		return fmt.Errorf("callgraph: %w", err)
@@ -144,9 +150,67 @@ func (e *Engine) IndexFile(ctx context.Context, filePath, src string) error {
 	return nil
 }
 
+// IndexDir indexes all .go files in repoDir using a worker pool.
+// workers defaults to runtime.NumCPU() when <= 0.
+func (e *Engine) IndexDir(ctx context.Context, repoDir string, workers int) error {
+	if workers <= 0 {
+		workers = runtime.NumCPU()
+	}
+	paths, err := searcher.WalkFiles(repoDir, 0)
+	if err != nil {
+		return fmt.Errorf("walk %s: %w", repoDir, err)
+	}
+
+	work := make(chan string, len(paths))
+	for _, p := range paths {
+		work <- p
+	}
+	close(work)
+
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		firstErr error
+	)
+
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for path := range work {
+				src, err := os.ReadFile(path)
+				if err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = fmt.Errorf("read %s: %w", path, err)
+					}
+					mu.Unlock()
+					return
+				}
+				relPath, _ := filepath.Rel(repoDir, path)
+				if err := e.IndexFile(ctx, relPath, string(src)); err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = fmt.Errorf("index %s: %w", path, err)
+					}
+					mu.Unlock()
+					return
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	return firstErr
+}
+
 func (e *Engine) FinalizeIndex() error {
 	e.bm25.Build()
 	e.sparse.Build()
+	if err := e.chunkStore.PutAll(e.pendingChunks); err != nil {
+		return fmt.Errorf("flush chunks: %w", err)
+	}
+	e.pendingChunks = nil
 	if err := e.callGraph.Flush(); err != nil {
 		return fmt.Errorf("flush call graph: %w", err)
 	}

@@ -3,9 +3,11 @@ package search
 import (
 	"math"
 	"sort"
+	"sync"
 )
 
 type BM25 struct {
+	mu          sync.Mutex
 	docCount    int
 	avgDocLen   float64
 	docLen      []int
@@ -27,6 +29,8 @@ func NewBM25() *BM25 {
 }
 
 func (b *BM25) AddDocument(tokens map[string]int, docID string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	idx := b.docCount
 	b.termFreqs = append(b.termFreqs, tokens)
 	b.DocIDs = append(b.DocIDs, docID)

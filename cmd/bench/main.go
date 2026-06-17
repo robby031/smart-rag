@@ -53,7 +53,7 @@ func main() {
 
 	if *fullReindex {
 		fmt.Println("Full re-indexing:", absRepo)
-		if err := indexRepo(eng, absRepo); err != nil {
+		if err := eng.IndexDir(context.Background(), absRepo, 0); err != nil {
 			log.Fatal(err)
 		}
 		if err := eng.FinalizeIndex(); err != nil {
@@ -114,29 +114,3 @@ func goStats(dir string) (files, lines int) {
 	return
 }
 
-func indexRepo(eng *engine.Engine, repoDir string) error {
-	ctx := context.Background()
-	return filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			if info.Name()[0] == '.' && info.Name() != "." {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if filepath.Ext(path) != ".go" {
-			return nil
-		}
-		src, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("read %s: %w", path, err)
-		}
-		relPath, _ := filepath.Rel(repoDir, path)
-		if err := eng.IndexFile(ctx, relPath, string(src)); err != nil {
-			return fmt.Errorf("index %s: %w", path, err)
-		}
-		return nil
-	})
-}
