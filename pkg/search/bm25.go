@@ -164,7 +164,10 @@ func (b *BM25) Score(query map[string]int) []ScoredDoc {
 		results = append(results, ScoredDoc{Index: int(idx), ID: b.DocIDs[idx], Score: score})
 	}
 	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
+		if results[i].Score != results[j].Score {
+			return results[i].Score > results[j].Score
+		}
+		return results[i].ID < results[j].ID
 	})
 	return results
 }

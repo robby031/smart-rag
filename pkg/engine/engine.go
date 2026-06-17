@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/robby031/smart-rag/pkg/graph"
 	"github.com/robby031/smart-rag/pkg/indexer"
@@ -21,6 +22,10 @@ type Engine struct {
 	callGraph   *graph.CallGraph
 	importGraph *graph.ImportGraph
 	chunkStore  *storage.ChunkStore
+
+	statusMu         sync.RWMutex
+	runtimeInfo      RuntimeInfo
+	lastIndexSummary IndexSummary
 }
 
 func New(kvStore *storage.Store, chunkStore *storage.ChunkStore, _ *storage.VectorDB, graphStore *storage.GraphStore) *Engine {

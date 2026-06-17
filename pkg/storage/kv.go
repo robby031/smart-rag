@@ -109,6 +109,18 @@ func (s *Store) GetWithPrefix(prefix []byte) (map[string][]byte, error) {
 	return result, err
 }
 
+func (s *Store) HasPrefix(prefix []byte) (bool, error) {
+	var found bool
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("rag"))
+		c := b.Cursor()
+		k, _ := c.Seek(prefix)
+		found = k != nil && len(k) >= len(prefix) && string(k[:len(prefix)]) == string(prefix)
+		return nil
+	})
+	return found, err
+}
+
 func (s *Store) DeleteWithPrefix(prefix []byte) error {
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte("rag"))

@@ -163,7 +163,8 @@ Run `make install` or add to your MCP client config:
 
 ### Available MCP Tools
 
-- `search_code` — hybrid search (BM25 + sparse vector)
+- `rag_status` — health check for version, index, graph, BM25, paths, and last sync
+- `search_code` — ranked BM25 code search with stable tie-breakers and filters
 - `find_definition` — go-to-definition for a symbol
 - `find_references` — find all usages of a symbol
 - `get_callers` / `get_callees` — call graph navigation
@@ -185,7 +186,7 @@ make clean        # Remove artifacts
 
 - `REPO=path` — source repository (default: `.`)
 - `DB=path` — database directory (default: `./rag-data`)
-- `VERSION=x.y.z` — binary version (default: `0.2.2`)
+- `VERSION=x.y.z` — binary version (default: `0.3.2`)
 
 ## Performance
 
@@ -194,22 +195,22 @@ Benchmarked on the smart-rag repository itself (30 Go files, 3659 lines).
 ```
 smart-rag performance matrix
 ================================
-  Version       : 0.2.2
+  Version       : 0.3.2
   Repository    : /Users/bagusdwiharianto/Development/go/smart-rag
-  Go files      : 30 (3659 lines)
-  Chunks        : 247
-  Graph nodes   : 165
-  Graph edges   : 539
-  Index time    : 122ms
+  Go files      : 43 (6059 lines)
+  Chunks        : 335
+  Graph nodes   : 248
+  Graph edges   : 948
+  Index time    : 139ms
 --------------------------------
   Metric                      Target        Actual
-  Cold index (  30 files)  ok  < 5-8s       122ms
-  Projected   (1000 files) ok  < 5-8s       ~4.078s  [from 30 files]
-  Incremental (    1 file) ok  < 1-2s       10ms
-  Query search             ok  < 50-80ms    median 135µs     p95 228µs  [247 chunks]
-  Query find-def           ok  < 50-80ms    median 67µs      p95 77µs  [247 chunks]
-  Query callers            ok  < 50-80ms    median < 1µs     p95 < 1µs  [247 chunks]
-  Binary size              ok  < 15-20 MB   6.8 MB
-  RAM during index         ok  < 80-120 MB  1.7 MB heap delta
-  Query 100k docs          warn  ~20-40ms     ~55ms projected  [linear from 247 chunks]
+  Cold index (  43 files)  ok  < 5-8s       139ms
+  Projected   (1000 files) ok  < 5-8s       ~3.239s  [from 43 files]
+  Incremental (    1 file) ok  < 1-2s       132ms
+  Query search             ok  < 50-80ms    median 137µs     p95 370µs  [335 chunks]
+  Query find-def           ok  < 50-80ms    median 1ms      p95 1ms  [335 chunks]
+  Query callers            ok  < 50-80ms    median < 1µs     p95 < 1µs  [335 chunks]
+  Binary size              ok  < 15-20 MB   6.9 MB
+  RAM during index         ok  < 80-120 MB  2.3 MB heap delta
+  Query 100k docs          warn  ~20-40ms     ~41ms projected  [linear from 335 chunks]
 ```
