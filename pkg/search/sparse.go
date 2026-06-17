@@ -6,31 +6,34 @@ import (
 	"sync"
 )
 
+type sparsePosting struct {
+	docIdx int32
+	weight float32
+}
+
 type SparseRetriever struct {
 	mu          sync.Mutex
-	vectors     []map[string]float64
-	idf         map[string]float64
 	docCount    int
 	DocIDs      []string
 	norms       []float64
-	termPosting map[string][]int
+	termPosting map[string][]sparsePosting
+	idf         map[string]float64
 }
 
 func NewSparseRetriever() *SparseRetriever {
 	return &SparseRetriever{
 		idf:         make(map[string]float64),
-		termPosting: make(map[string][]int),
+		termPosting: make(map[string][]sparsePosting),
 	}
 }
 
 func (s *SparseRetriever) AddDocument(vec map[string]float64, docID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	idx := s.docCount
-	s.vectors = append(s.vectors, vec)
+	idx := int32(s.docCount)
 	s.DocIDs = append(s.DocIDs, docID)
-	for term := range vec {
-		s.termPosting[term] = append(s.termPosting[term], idx)
+	for term, val := range vec {
+		s.termPosting[term] = append(s.termPosting[term], sparsePosting{docIdx: idx, weight: float32(val)})
 	}
 	s.docCount++
 }
@@ -39,25 +42,23 @@ func (s *SparseRetriever) Build() {
 	if s.docCount == 0 {
 		return
 	}
-	df := make(map[string]int, len(s.termPosting))
-	for term, posting := range s.termPosting {
-		df[term] = len(posting)
-	}
-	for term, count := range df {
-		s.idf[term] = math.Log(1.0 + float64(s.docCount)/float64(count))
+	for term, posts := range s.termPosting {
+		df := len(posts)
+		s.idf[term] = math.Log(1.0 + float64(s.docCount)/float64(df))
 	}
 
+	// Apply IDF weighting in-place, then compute per-doc L2 norms.
 	s.norms = make([]float64, s.docCount)
-	for i, vec := range s.vectors {
-		weighted := make(map[string]float64, len(vec))
-		var norm float64
-		for term, val := range vec {
-			w := val * s.idf[term]
-			weighted[term] = w
-			norm += w * w
+	for term, posts := range s.termPosting {
+		idf := s.idf[term]
+		for i, p := range posts {
+			w := float64(p.weight) * idf
+			s.termPosting[term][i].weight = float32(w)
+			s.norms[p.docIdx] += w * w
 		}
-		s.vectors[i] = weighted
-		s.norms[i] = math.Sqrt(norm)
+	}
+	for i := range s.norms {
+		s.norms[i] = math.Sqrt(s.norms[i])
 	}
 }
 
@@ -72,21 +73,6 @@ func (s *SparseRetriever) Search(query map[string]float64, topK int) []ScoredRes
 		return nil
 	}
 
-	// Find candidate docs that share at least one query term
-	candidates := make(map[int]float64)
-	for term := range query {
-		for _, idx := range s.termPosting[term] {
-			if _, seen := candidates[idx]; !seen {
-				candidates[idx] = 0
-			}
-		}
-	}
-
-	if len(candidates) == 0 {
-		return nil
-	}
-
-	// Compute query norm
 	var queryNorm float64
 	for _, v := range query {
 		queryNorm += v * v
@@ -96,23 +82,21 @@ func (s *SparseRetriever) Search(query map[string]float64, topK int) []ScoredRes
 		return nil
 	}
 
-	for idx := range candidates {
-		var dot float64
-		vec := s.vectors[idx]
-		for term := range query {
-			if v, ok := vec[term]; ok {
-				dot += query[term] * v
-			}
-		}
-		if s.norms[idx] > 0 {
-			candidates[idx] = dot / (queryNorm * s.norms[idx])
+	// Accumulate dot products via posting lists — only visits docs that share a query term.
+	candidates := make(map[int32]float64)
+	for term, qv := range query {
+		for _, p := range s.termPosting[term] {
+			candidates[p.docIdx] += qv * float64(p.weight)
 		}
 	}
 
 	results := make([]ScoredResult, 0, len(candidates))
-	for idx, score := range candidates {
-		if score > 0 {
-			results = append(results, ScoredResult{Index: idx, ID: s.DocIDs[idx], Score: score})
+	for idx, dot := range candidates {
+		if s.norms[idx] > 0 {
+			score := dot / (queryNorm * s.norms[idx])
+			if score > 0 {
+				results = append(results, ScoredResult{Index: int(idx), ID: s.DocIDs[idx], Score: score})
+			}
 		}
 	}
 	sort.Slice(results, func(i, j int) bool {
