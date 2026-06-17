@@ -47,6 +47,8 @@ func main() {
 
 	eng := engine.New(kvStore, chunkStore, vectorDB, graphStore)
 
+	var indexedCount int
+
 	start := time.Now()
 
 	if *fullReindex {
@@ -55,6 +57,7 @@ func main() {
 			log.Fatal(err)
 		}
 		eng.FinalizeIndex()
+		indexedCount = goFiles
 	} else {
 		syncer := indexer.NewSyncer(eng, indexStore, absRepo)
 		indexed, deleted, err := syncer.Sync(context.Background())
@@ -62,15 +65,16 @@ func main() {
 			log.Fatal(err)
 		}
 		fmt.Printf("Incremental: %d indexed, %d removed\n", indexed, deleted)
+		indexedCount = indexed
 	}
 
 	elapsed := time.Since(start)
 	s := eng.Stats()
 
-	// Project time for 1k files
+	// Project time for 1k files based on files actually indexed in this run.
 	var projected time.Duration
-	if goFiles > 0 {
-		projected = time.Duration(float64(elapsed) * 1000.0 / float64(goFiles))
+	if indexedCount > 0 {
+		projected = time.Duration(float64(elapsed) * 1000.0 / float64(indexedCount))
 	}
 
 	fmt.Println()
@@ -86,7 +90,7 @@ func main() {
 	fmt.Println("------------------------------")
 	fmt.Println("  Metric                    Target        Actual")
 	fmt.Printf("  Cold index (%d files)      < 5-8s        %s\n", goFiles, elapsed.Round(time.Millisecond))
-	fmt.Printf("  Projected (1k files)       < 5-8s        ~%s\n", projected.Round(time.Millisecond))
+	fmt.Printf("  Projected (1k files)       < 5-8s        ~%s  [from %d files]\n", projected.Round(time.Millisecond), indexedCount)
 	fmt.Println("  Incremental re-index      < 1-2s        ~git diff")
 	fmt.Println("  Query latency             < 50-80ms     ~posting-list")
 	fmt.Println("  Binary size               < 15-20 MB    ~7.3 MB")
