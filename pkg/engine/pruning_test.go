@@ -506,6 +506,156 @@ func TestContextPackSkipsFoldedNearbyChunks(t *testing.T) {
 	}
 }
 
+func TestParsePruningMode(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want PruningMode
+	}{
+		{in: "", want: PruningModeSoft},
+		{in: "soft", want: PruningModeSoft},
+		{in: "off", want: PruningModeOff},
+		{in: "hard", want: PruningModeHard},
+		{in: " HARD ", want: PruningModeHard},
+	} {
+		got, err := ParsePruningMode(tc.in)
+		if err != nil {
+			t.Fatalf("ParsePruningMode(%q): %v", tc.in, err)
+		}
+		if got != tc.want {
+			t.Fatalf("ParsePruningMode(%q): want %s, got %s", tc.in, tc.want, got)
+		}
+	}
+	if _, err := ParsePruningMode("delete-everything"); err == nil {
+		t.Fatal("expected invalid pruning mode to fail")
+	}
+}
+
+func TestPruningModeOffIgnoresStoredPruningMetadata(t *testing.T) {
+	eng := regressionTestEngineWithChunks(t, []storage.ChunkMeta{
+		{
+			ID:            "pkg/service.go:1-3",
+			FilePath:      "pkg/service.go",
+			ChunkType:     "4",
+			SymbolName:    "FoldedNearby",
+			StartLine:     1,
+			EndLine:       3,
+			Content:       "func FoldedNearby() { sharedModeToken() }",
+			Reachability:  ReachabilityReachable,
+			ContextWeight: boilerplateContextWeight,
+			SemanticRole:  SemanticRoleBoilerplate,
+			FoldReason:    FoldReasonSimpleWrapper,
+		},
+		{
+			ID:            "pkg/service.go:5-8",
+			FilePath:      "pkg/service.go",
+			ChunkType:     "4",
+			SymbolName:    "Target",
+			StartLine:     5,
+			EndLine:       8,
+			Content:       "func Target() { sharedModeToken() }",
+			Reachability:  ReachabilityReachable,
+			ContextWeight: reachableContextWeight,
+		},
+		{
+			ID:         "pkg/other.go:1-3",
+			FilePath:   "pkg/other.go",
+			ChunkType:  "4",
+			SymbolName: "Other",
+			StartLine:  1,
+			EndLine:    3,
+			Content:    "func Other() { unrelatedToken() }",
+		},
+	})
+	if err := eng.SetPruningMode(PruningModeOff); err != nil {
+		t.Fatalf("SetPruningMode: %v", err)
+	}
+
+	resp, err := eng.Query(context.Background(), Query{
+		Type: QuerySearch,
+		Text: "sharedModeToken",
+		TopK: 2,
+	})
+	if err != nil {
+		t.Fatalf("Query search: %v", err)
+	}
+	if len(resp.Results) != 2 {
+		t.Fatalf("expected two search results, got %d", len(resp.Results))
+	}
+	if strings.Contains(strings.Join(resp.Results[0].Related, "\n"), "penalty semantic_role=") ||
+		strings.Contains(strings.Join(resp.Results[1].Related, "\n"), "penalty semantic_role=") {
+		t.Fatalf("pruning off should ignore semantic penalty: %+v", resp.Results)
+	}
+
+	ctxResp, err := eng.Query(context.Background(), Query{
+		Type: QueryContextPack,
+		Text: "pkg/service.go:5-8",
+	})
+	if err != nil {
+		t.Fatalf("Query context pack: %v", err)
+	}
+	if !strings.Contains(ctxResp.Results[0].Content, "FoldedNearby") {
+		t.Fatalf("pruning off should include folded nearby chunks:\n%s", ctxResp.Results[0].Content)
+	}
+}
+
+func TestHardPruningDeletesLowValueChunksAndRebuildsBM25(t *testing.T) {
+	eng, closeStore := pruningTestEngine(t)
+	defer closeStore()
+	if err := eng.SetPruningMode(PruningModeHard); err != nil {
+		t.Fatalf("SetPruningMode: %v", err)
+	}
+
+	src := strings.Join([]string{
+		"package main",
+		"",
+		"func main() { importantLogic() }",
+		"",
+		"func importantLogic() {",
+		"	validatePayment()",
+		"	persistPayment()",
+		"}",
+		"",
+		"func deadHelper() { hardPruneDeadToken() }",
+		"",
+		"func NewService() *Service {",
+		"	return &Service{}",
+		"}",
+		"",
+		"type Service struct {",
+		"	Name string",
+		"}",
+	}, "\n")
+
+	if err := eng.IndexFile(context.Background(), "app/main.go", src); err != nil {
+		t.Fatalf("IndexFile: %v", err)
+	}
+	if err := eng.FinalizeIndex(); err != nil {
+		t.Fatalf("FinalizeIndex: %v", err)
+	}
+
+	if chunk := findChunkBySymbol(t, eng.chunkStore, "importantLogic"); chunk == nil {
+		t.Fatal("important logic should remain after hard pruning")
+	}
+	if chunk := findChunkBySymbol(t, eng.chunkStore, "deadHelper"); chunk != nil {
+		t.Fatalf("unreachable function should be hard pruned: %+v", chunk)
+	}
+	if chunk := findChunkBySymbol(t, eng.chunkStore, "NewService"); chunk != nil {
+		t.Fatalf("trivial constructor should be hard pruned: %+v", chunk)
+	}
+
+	resp, err := eng.Query(context.Background(), Query{
+		Type: QuerySearch,
+		Text: "hardPruneDeadToken",
+		TopK: 5,
+	})
+	if err != nil {
+		t.Fatalf("Query search: %v", err)
+	}
+	if len(resp.Results) != 0 {
+		t.Fatalf("hard-pruned chunk leaked through rebuilt BM25: %+v", resp.Results)
+	}
+}
+
 func pruningTestEngine(t *testing.T) (*Engine, func()) {
 	t.Helper()
 
@@ -519,6 +669,21 @@ func pruningTestEngine(t *testing.T) (*Engine, func()) {
 			t.Fatalf("Close store: %v", err)
 		}
 	}
+}
+
+func findChunkBySymbol(t *testing.T, store *storage.ChunkStore, symbol string) *storage.ChunkMeta {
+	t.Helper()
+
+	chunks, err := store.GetAll()
+	if err != nil {
+		t.Fatalf("GetAll: %v", err)
+	}
+	for _, chunk := range chunks {
+		if chunk.SymbolName == symbol {
+			return chunk
+		}
+	}
+	return nil
 }
 
 func assertFoldReason(t *testing.T, store *storage.ChunkStore, symbol, reason string) *storage.ChunkMeta {
