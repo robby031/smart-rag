@@ -31,18 +31,21 @@ make run-full REPO=/path/to/your/project
 | `--full`   | `false`  | Force full re-index instead of incremental |
 | `--version`| `false`  | Show version                        |
 
-### Docker (recommended)
+### Docker via GHCR (no build required)
 
-**1. Build image**
+**1. Pull image**
 
 ```bash
-make docker-build
+docker pull ghcr.io/robby031/smart-rag:latest
 ```
 
-**2. Index repo**
+**2. Index your repo**
 
 ```bash
-make docker-index REPO=/path/to/your/project
+docker run --rm \
+  -v "/path/to/your/project:/repo:ro" \
+  -v "smart-rag-data:/data" \
+  ghcr.io/robby031/smart-rag:latest --repo=/repo --db=/data --full
 ```
 
 **3. Add to Claude Desktop** — `~/Library/Application Support/Claude/claude_desktop_config.json`:
@@ -56,14 +59,14 @@ make docker-index REPO=/path/to/your/project
         "run", "-i", "--rm",
         "-v", "/path/to/your/project:/repo:ro",
         "-v", "smart-rag-data:/data",
-        "smart-rag:latest"
+        "ghcr.io/robby031/smart-rag:latest"
       ]
     }
   }
 }
 ```
 
-**4. Add to Claude Code** — `.mcp.json` di root project:
+**4. Add to Claude Code** — `.mcp.json` in your project root:
 
 ```json
 {
@@ -74,16 +77,40 @@ make docker-index REPO=/path/to/your/project
         "run", "-i", "--rm",
         "-v", "/path/to/your/project:/repo:ro",
         "-v", "smart-rag-data:/data",
-        "smart-rag:latest"
+        "ghcr.io/robby031/smart-rag:latest"
       ]
     }
   }
 }
 ```
 
-Restart Claude setelah menambahkan config. Setiap sesi baru, Docker otomatis melakukan incremental sync sebelum server MCP aktif.
+Restart Claude after adding the config. On each new session, Docker automatically runs an incremental sync before the MCP server starts.
 
-**Re-index setelah update kode smart-rag:**
+**Update to the latest version:**
+
+```bash
+docker pull ghcr.io/robby031/smart-rag:latest
+```
+
+---
+
+### Docker (build locally)
+
+**1. Build image**
+
+```bash
+make docker-build
+```
+
+**2. Index your repo**
+
+```bash
+make docker-index REPO=/path/to/your/project
+```
+
+**3.** Use the same MCP config as above, replacing the image with `smart-rag:latest`.
+
+**Re-index after updating smart-rag source:**
 
 ```bash
 make docker-restart REPO=/path/to/your/project
@@ -91,9 +118,9 @@ make docker-restart REPO=/path/to/your/project
 
 ---
 
-### Binary (tanpa Docker)
+### Binary (without Docker)
 
-Run `make install` atau tambahkan ke VS Code `settings.json`:
+Run `make install` or add to your MCP client config:
 
 ```json
 {
