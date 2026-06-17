@@ -48,7 +48,7 @@ test:            ; @echo "Run all tests"
 
 clean:           ; @echo "Remove build artifacts and database"
 	go clean -cache
-	rm -rf $(DB) $(BINARY) $(BENCH)
+	rm -rf $(DB) $(BINARY) $(BENCH) bench
 
 help:
 	@echo "smart-rag — Make targets"

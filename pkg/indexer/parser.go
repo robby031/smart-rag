@@ -44,11 +44,11 @@ func NewParser() *Parser {
 	return &Parser{fset: token.NewFileSet()}
 }
 
-// ParseFile parses a file and returns declarations plus file-level metadata.
-func (p *Parser) ParseFile(filePath, src string) ([]ParsedDecl, FileInfo, error) {
+// ParseFile parses a file and returns the AST, declarations, and metadata.
+func (p *Parser) ParseFile(filePath, src string) (*ast.File, []ParsedDecl, FileInfo, error) {
 	f, err := parser.ParseFile(p.fset, filePath, src, parser.ParseComments)
 	if err != nil {
-		return nil, FileInfo{}, err
+		return nil, nil, FileInfo{}, err
 	}
 
 	pkg := f.Name.Name
@@ -70,7 +70,7 @@ func (p *Parser) ParseFile(filePath, src string) ([]ParsedDecl, FileInfo, error)
 		}
 	}
 
-	return decls, FileInfo{Package: pkg, Imports: imports, IsTest: isTest}, nil
+	return f, decls, FileInfo{Package: pkg, Imports: imports, IsTest: isTest}, nil
 }
 
 func (p *Parser) parseFuncDecl(d *ast.FuncDecl) ParsedDecl {

@@ -90,7 +90,7 @@ func New(kvStore *storage.Store, chunkStore *storage.ChunkStore, _ *storage.Vect
 }
 
 func (e *Engine) IndexFile(ctx context.Context, filePath, src string) error {
-	decls, fileInfo, err := e.parser.ParseFile(filePath, src)
+	astFile, decls, fileInfo, err := e.parser.ParseFile(filePath, src)
 	if err != nil {
 		return fmt.Errorf("parse: %w", err)
 	}
@@ -135,10 +135,10 @@ func (e *Engine) IndexFile(ctx context.Context, filePath, src string) error {
 		}
 	}
 
-	if err := e.callGraph.ParseFile(filePath, src, fileInfo.Package); err != nil {
+	if err := e.callGraph.ParseAST(astFile, filePath, fileInfo.Package); err != nil {
 		return fmt.Errorf("callgraph: %w", err)
 	}
-	if err := e.importGraph.AddFile(fileInfo.Package, filePath, src); err != nil {
+	if err := e.importGraph.AddAST(fileInfo.Package, astFile); err != nil {
 		return fmt.Errorf("import graph: %w", err)
 	}
 

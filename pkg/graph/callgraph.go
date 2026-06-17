@@ -132,6 +132,11 @@ func (cg *CallGraph) ParseFile(filePath, src string, pkg string) error {
 	if err != nil {
 		return fmt.Errorf("parse %s: %w", filePath, err)
 	}
+	return cg.ParseAST(f, filePath, pkg)
+}
+
+// ParseAST processes an already-parsed AST, avoiding a second parse.
+func (cg *CallGraph) ParseAST(f *ast.File, filePath, pkg string) error {
 	cg.CurPkg = pkg
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch node := n.(type) {
@@ -302,6 +307,11 @@ func (ig *ImportGraph) AddFile(pkg, path, src string) error {
 	if err != nil {
 		return err
 	}
+	return ig.AddAST(pkg, f)
+}
+
+// AddAST processes imports from an already-parsed AST, avoiding re-parsing.
+func (ig *ImportGraph) AddAST(pkg string, f *ast.File) error {
 	if ig.OutEdges[pkg] == nil {
 		ig.OutEdges[pkg] = make(map[string]bool)
 	}
