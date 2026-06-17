@@ -184,6 +184,9 @@ func (e *Engine) FinalizeIndex() error {
 	if err := e.refreshChunkReachability(); err != nil {
 		return fmt.Errorf("refresh chunk reachability: %w", err)
 	}
+	if _, err := e.applyHardPruning(); err != nil {
+		return fmt.Errorf("hard prune chunks: %w", err)
+	}
 	return e.importGraph.Flush()
 }
 
