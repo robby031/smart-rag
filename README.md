@@ -57,12 +57,12 @@ make run-full REPO=/path/to/your/project
 | `--full`   | `false`  | Force full re-index instead of incremental |
 | `--version`| `false`  | Show version                        |
 
-### Docker via GHCR (no build required)
+### Docker Hub (no build required)
 
 **1. Pull image**
 
 ```bash
-docker pull ghcr.io/robby031/smart-rag:latest
+docker pull robbymangku/smart-rag:latest
 ```
 
 **2. Index your repo**
@@ -71,7 +71,7 @@ docker pull ghcr.io/robby031/smart-rag:latest
 docker run --rm \
   -v "/path/to/your/project:/repo:ro" \
   -v "smart-rag-data:/data" \
-  ghcr.io/robby031/smart-rag:latest --repo=/repo --db=/data --full
+  robbymangku/smart-rag:latest --repo=/repo --db=/data --full
 ```
 
 **3. Add to Claude Desktop** — `~/Library/Application Support/Claude/claude_desktop_config.json`:
@@ -85,7 +85,7 @@ docker run --rm \
         "run", "-i", "--rm",
         "-v", "/path/to/your/project:/repo:ro",
         "-v", "smart-rag-data:/data",
-        "ghcr.io/robby031/smart-rag:latest"
+        "robbymangku/smart-rag:latest"
       ]
     }
   }
@@ -103,7 +103,7 @@ docker run --rm \
         "run", "-i", "--rm",
         "-v", "/path/to/your/project:/repo:ro",
         "-v", "smart-rag-data:/data",
-        "ghcr.io/robby031/smart-rag:latest"
+        "robbymangku/smart-rag:latest"
       ]
     }
   }
@@ -115,8 +115,10 @@ Restart Claude after adding the config. On each new session, Docker automaticall
 **Update to the latest version:**
 
 ```bash
-docker pull ghcr.io/robby031/smart-rag:latest
+docker pull robbymangku/smart-rag:latest
 ```
+
+> Also available on GHCR: `ghcr.io/robby031/smart-rag:latest`
 
 ---
 

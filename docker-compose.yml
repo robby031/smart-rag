@@ -1,10 +1,10 @@
 services:
   smart-rag:
+    image: robbymangku/smart-rag:latest
     build:
       context: .
       args:
         VERSION: "0.2.0"
-    image: smart-rag:latest
     stdin_open: true   # keep stdin open for MCP stdio transport
     tty: false
     volumes:
@@ -15,11 +15,11 @@ services:
   # One-shot service: run a full re-index then exit.
   # Usage: docker compose run --rm index
   index:
+    image: robbymangku/smart-rag:latest
     build:
       context: .
       args:
         VERSION: "0.2.0"
-    image: smart-rag:latest
     volumes:
       - ${REPO_DIR:-.}:/repo:ro
       - rag-data:/data
