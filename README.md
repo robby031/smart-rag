@@ -163,6 +163,7 @@ Run `make install` or add to your MCP client config:
 
 ### Available MCP Tools
 
+- `rag_status` — health check for version, index, graph, BM25, paths, and last sync
 - `search_code` — ranked BM25 code search with stable tie-breakers and filters
 - `find_definition` — go-to-definition for a symbol
 - `find_references` — find all usages of a symbol
