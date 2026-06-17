@@ -1,0 +1,105 @@
+package storage
+
+import (
+	"fmt"
+	"time"
+
+	"go.etcd.io/bbolt"
+)
+
+type Store struct {
+	db *bbolt.DB
+}
+
+func OpenStore(path string) (*Store, error) {
+	db, err := bbolt.Open(path+".db", 0600, &bbolt.Options{Timeout: 1 * time.Second})
+	if err != nil {
+		return nil, fmt.Errorf("boltdb open: %w", err)
+	}
+
+	err = db.Update(func(tx *bbolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte("rag"))
+		return err
+	})
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("boltdb init bucket: %w", err)
+	}
+
+	return &Store{db: db}, nil
+}
+
+func (s *Store) Close() error {
+	return s.db.Close()
+}
+
+func (s *Store) Get(key []byte) ([]byte, error) {
+	var val []byte
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("rag"))
+		v := b.Get(key)
+		if v == nil {
+			return ErrNotFound
+		}
+		val = make([]byte, len(v))
+		copy(val, v)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return val, nil
+}
+
+func (s *Store) Put(key, value []byte) error {
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("rag"))
+		return b.Put(key, value)
+	})
+}
+
+// PutWithTTL simulates TTL by storing expiry timestamp before value.
+func (s *Store) PutWithTTL(key, value []byte, ttl time.Duration) error {
+	expiry := time.Now().Add(ttl).UnixNano()
+	entry := make([]byte, 8+len(value))
+	for i := 0; i < 8; i++ {
+		entry[i] = byte(expiry >> (i * 8))
+	}
+	copy(entry[8:], value)
+
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("rag"))
+		return b.Put(key, entry)
+	})
+}
+
+func (s *Store) Delete(key []byte) error {
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("rag"))
+		return b.Delete(key)
+	})
+}
+
+func (s *Store) Sync() error {
+	return s.db.Sync()
+}
+
+var ErrNotFound = fmt.Errorf("key not found")
+
+func (s *Store) GetWithPrefix(prefix []byte) (map[string][]byte, error) {
+	result := make(map[string][]byte)
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("rag"))
+		c := b.Cursor()
+		for k, v := c.Seek(prefix); k != nil && len(k) >= len(prefix); k, v = c.Next() {
+			if string(k[:len(prefix)]) != string(prefix) {
+				break
+			}
+			val := make([]byte, len(v))
+			copy(val, v)
+			result[string(k)] = val
+		}
+		return nil
+	})
+	return result, err
+}
