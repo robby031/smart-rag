@@ -8,10 +8,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bagusdwiharianto/smart-rag/pkg/engine"
-	"github.com/bagusdwiharianto/smart-rag/pkg/indexer"
-	"github.com/bagusdwiharianto/smart-rag/pkg/mcp"
-	"github.com/bagusdwiharianto/smart-rag/pkg/storage"
+	"github.com/robby031/smart-rag/pkg/engine"
+	"github.com/robby031/smart-rag/pkg/indexer"
+	"github.com/robby031/smart-rag/pkg/mcp"
+	"github.com/robby031/smart-rag/pkg/storage"
 )
 
 var version = "dev"
@@ -80,4 +80,3 @@ func main() {
 		log.Fatalf("Server error: %v", err)
 	}
 }
-

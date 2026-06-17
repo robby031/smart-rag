@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bagusdwiharianto/smart-rag/pkg/storage"
+	"github.com/robby031/smart-rag/pkg/storage"
 )
 
 type Node struct {

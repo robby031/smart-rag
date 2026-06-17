@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bagusdwiharianto/smart-rag/pkg/engine"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/robby031/smart-rag/pkg/engine"
 )
 
 type SmartRAGServer struct {

@@ -1,4 +1,4 @@
-module github.com/bagusdwiharianto/smart-rag
+module github.com/robby031/smart-rag
 
 go 1.23
 

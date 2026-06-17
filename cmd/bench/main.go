@@ -12,10 +12,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/bagusdwiharianto/smart-rag/pkg/engine"
-	"github.com/bagusdwiharianto/smart-rag/pkg/indexer"
-	"github.com/bagusdwiharianto/smart-rag/pkg/searcher"
-	"github.com/bagusdwiharianto/smart-rag/pkg/storage"
+	"github.com/robby031/smart-rag/pkg/engine"
+	"github.com/robby031/smart-rag/pkg/indexer"
+	"github.com/robby031/smart-rag/pkg/searcher"
+	"github.com/robby031/smart-rag/pkg/storage"
 )
 
 var version = "dev"
@@ -236,11 +236,11 @@ func medianAndP95(d []time.Duration) (median, p95 time.Duration) {
 func statusIcon(actual, warn, crit time.Duration) string {
 	switch {
 	case actual <= warn:
-		return "✓"
+		return "ok"
 	case actual <= crit:
-		return "~"
+		return "warn"
 	default:
-		return "✗"
+		return "crit"
 	}
 }
 

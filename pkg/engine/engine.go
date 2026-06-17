@@ -9,11 +9,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bagusdwiharianto/smart-rag/pkg/graph"
-	"github.com/bagusdwiharianto/smart-rag/pkg/indexer"
-	"github.com/bagusdwiharianto/smart-rag/pkg/search"
-	"github.com/bagusdwiharianto/smart-rag/pkg/searcher"
-	"github.com/bagusdwiharianto/smart-rag/pkg/storage"
+	"github.com/robby031/smart-rag/pkg/graph"
+	"github.com/robby031/smart-rag/pkg/indexer"
+	"github.com/robby031/smart-rag/pkg/search"
+	"github.com/robby031/smart-rag/pkg/searcher"
+	"github.com/robby031/smart-rag/pkg/storage"
 )
 
 type QueryType int
