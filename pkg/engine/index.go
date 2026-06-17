@@ -165,10 +165,31 @@ func (e *Engine) IndexDir(ctx context.Context, repoDir string, workers int) erro
 }
 
 func (e *Engine) FinalizeIndex() error {
+	if e.bm25.IsEmpty() {
+		if err := e.warmupBM25(); err != nil {
+			return fmt.Errorf("warmup BM25: %w", err)
+		}
+	}
 	e.bm25.Build()
 	if err := e.callGraph.Flush(); err != nil {
 		return fmt.Errorf("flush call graph: %w", err)
 	}
 	e.callGraph.BuildInEdges()
 	return e.importGraph.Flush()
+}
+
+func (e *Engine) warmupBM25() error {
+	chunks, err := e.chunkStore.GetAll()
+	if err != nil {
+		return err
+	}
+	for _, ch := range chunks {
+		tokens := e.tokenizer.Tokenize(ch.Content)
+		freq := make(map[string]int)
+		for tok, count := range tokens {
+			freq[tok] = count
+		}
+		e.bm25.AddDocument(freq, ch.ID)
+	}
+	return nil
 }

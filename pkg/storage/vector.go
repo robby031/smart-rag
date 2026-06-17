@@ -142,6 +142,22 @@ func (cs *ChunkStore) SearchBySymbol(query string, chunkTypes []string) ([]*Chun
 	return results, nil
 }
 
+func (cs *ChunkStore) GetAll() ([]*ChunkMeta, error) {
+	raw, err := cs.kv.GetWithPrefix([]byte("chunk:"))
+	if err != nil {
+		return nil, err
+	}
+	chunks := make([]*ChunkMeta, 0, len(raw))
+	for _, data := range raw {
+		var meta ChunkMeta
+		if err := json.Unmarshal(data, &meta); err != nil {
+			continue
+		}
+		chunks = append(chunks, &meta)
+	}
+	return chunks, nil
+}
+
 func (cs *ChunkStore) PutAll(metas []ChunkMeta) error {
 	pairs := make([]KVPair, 0, len(metas))
 	for _, meta := range metas {

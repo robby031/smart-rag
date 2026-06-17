@@ -176,3 +176,9 @@ func (b *BM25) Search(query map[string]int, topK int) []ScoredDoc {
 	}
 	return scored[:topK]
 }
+
+func (b *BM25) IsEmpty() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.docCount == 0
+}
