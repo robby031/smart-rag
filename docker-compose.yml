@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        VERSION: "0.1.0"
+        VERSION: "0.2.0"
     image: smart-rag:latest
     stdin_open: true   # keep stdin open for MCP stdio transport
     tty: false
@@ -18,7 +18,7 @@ services:
     build:
       context: .
       args:
-        VERSION: "0.1.0"
+        VERSION: "0.2.0"
     image: smart-rag:latest
     volumes:
       - ${REPO_DIR:-.}:/repo:ro
