@@ -141,6 +141,7 @@ func (cg *CallGraph) ParseAST(f *ast.File, fset *token.FileSet, filePath, pkg st
 		switch node := n.(type) {
 		case *ast.FuncDecl:
 			cg.processFuncDecl(node, fset, filePath, pkg)
+			return false // processFuncDecl walks fn.Body internally with the correct callerID
 		case *ast.CallExpr:
 			cg.processCallExpr(node, fset, filePath)
 		}
