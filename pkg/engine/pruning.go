@@ -15,8 +15,20 @@ const (
 	ReachabilityReachable   = "reachable"
 	ReachabilityUnreachable = "unreachable"
 
+	SemanticRoleBoilerplate = "boilerplate"
+
+	FoldReasonGeneratedCode      = "generated_code"
+	FoldReasonTrivialConstructor = "trivial_constructor"
+	FoldReasonGetterSetter       = "getter_setter"
+	FoldReasonLargeDTO           = "large_dto"
+	FoldReasonErrorConstBlock    = "error_const_block"
+	FoldReasonSimpleWrapper      = "simple_wrapper"
+	FoldReasonTrivialDeclaration = "trivial_declaration"
+
 	reachableContextWeight   = 1.0
 	unreachableContextWeight = 0.55
+	boilerplateContextWeight = 0.65
+	generatedContextWeight   = 0.40
 	autoContextMinWeight     = 0.75
 )
 
@@ -50,22 +62,23 @@ func (e *Engine) refreshChunkReachability() error {
 	for _, chunk := range chunks {
 		meta := *chunk
 		meta.Reachability = ReachabilityUnknown
-		meta.ContextWeight = reachableContextWeight
+		meta.ContextWeight = baseContextWeight(&meta)
 
 		if isExportedTypeChunk(&meta) {
 			meta.Reachability = ReachabilityReachable
-			meta.ContextWeight = reachableContextWeight
+			meta.ContextWeight = baseContextWeight(&meta)
 		} else if isPrunableFunctionChunk(&meta) {
 			if nodeID, ok := nodesByFileLine[fileLineKey(meta.FilePath, meta.StartLine)]; ok {
 				if reachable[nodeID] {
 					meta.Reachability = ReachabilityReachable
-					meta.ContextWeight = reachableContextWeight
+					meta.ContextWeight = baseContextWeight(&meta)
 				} else {
 					meta.Reachability = ReachabilityUnreachable
 					meta.ContextWeight = unreachableContextWeight
 				}
 			}
 		}
+		applySemanticFolding(&meta)
 
 		updated = append(updated, meta)
 	}
@@ -243,6 +256,276 @@ func isExportedTypeChunk(chunk *storage.ChunkMeta) bool {
 	default:
 		return false
 	}
+}
+
+func applySemanticFolding(chunk *storage.ChunkMeta) {
+	if chunk == nil {
+		return
+	}
+
+	reason := chunk.FoldReason
+	if reason == "" {
+		reason = detectFoldReason(chunk)
+	}
+	if reason == "" {
+		chunk.SemanticRole = ""
+		chunk.FoldReason = ""
+		return
+	}
+
+	chunk.SemanticRole = SemanticRoleBoilerplate
+	chunk.FoldReason = reason
+	weight := boilerplateContextWeight
+	if reason == FoldReasonGeneratedCode {
+		weight = generatedContextWeight
+	}
+	if chunk.ContextWeight <= 0 || weight < chunk.ContextWeight {
+		chunk.ContextWeight = weight
+	}
+}
+
+func detectFoldReason(chunk *storage.ChunkMeta) string {
+	content := strings.TrimSpace(chunk.Content)
+	if content == "" {
+		return ""
+	}
+	lowerContent := strings.ToLower(content)
+
+	if isGeneratedChunk(content) {
+		return FoldReasonGeneratedCode
+	}
+	if isErrorConstBlock(chunk, content, lowerContent) {
+		return FoldReasonErrorConstBlock
+	}
+	if isLargeDTOChunk(chunk, content) {
+		return FoldReasonLargeDTO
+	}
+	if isTrivialDeclaration(chunk, content) {
+		return FoldReasonTrivialDeclaration
+	}
+	if !isPrunableFunctionChunk(chunk) {
+		return ""
+	}
+	if isGetterSetter(chunk, content) {
+		return FoldReasonGetterSetter
+	}
+	if isTrivialConstructor(chunk, content) {
+		return FoldReasonTrivialConstructor
+	}
+	if isSimpleWrapper(chunk, content) {
+		return FoldReasonSimpleWrapper
+	}
+	return ""
+}
+
+func baseContextWeight(chunk *storage.ChunkMeta) float64 {
+	if chunk == nil || chunk.ContextWeight <= 0 {
+		return reachableContextWeight
+	}
+	return chunk.ContextWeight
+}
+
+func isGeneratedSource(src string) bool {
+	for i, line := range strings.Split(src, "\n") {
+		if i >= 20 {
+			break
+		}
+		line = strings.ToLower(line)
+		if strings.Contains(line, "code generated") && strings.Contains(line, "do not edit") {
+			return true
+		}
+	}
+	return false
+}
+
+func isGeneratedChunk(content string) bool {
+	lower := strings.ToLower(content)
+	return strings.Contains(lower, "code generated") && strings.Contains(lower, "do not edit")
+}
+
+func isErrorConstBlock(chunk *storage.ChunkMeta, content, lowerContent string) bool {
+	trimmed := strings.TrimSpace(content)
+	if strings.HasPrefix(chunk.SymbolName, "Err") && strings.Contains(trimmed, "=") {
+		return true
+	}
+	if !strings.HasPrefix(trimmed, "const ") && !strings.HasPrefix(trimmed, "var ") {
+		return false
+	}
+	if strings.Contains(lowerContent, "errors.new(") || strings.Contains(lowerContent, "fmt.errorf(") {
+		return true
+	}
+	return strings.Contains(content, "Err") || strings.Contains(lowerContent, "error")
+}
+
+func isLargeDTOChunk(chunk *storage.ChunkMeta, content string) bool {
+	if chunk == nil || chunk.ChunkType != "5" {
+		return false
+	}
+	fieldLines := 0
+	tagLines := 0
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "//") || line == "{" || line == "}" {
+			continue
+		}
+		if strings.HasPrefix(line, "type ") || strings.HasPrefix(line, "struct") {
+			continue
+		}
+		fieldLines++
+		if strings.Contains(line, "`json:") || strings.Contains(line, "`db:") || strings.Contains(line, "`yaml:") {
+			tagLines++
+		}
+	}
+	name := strings.ToLower(chunk.SymbolName)
+	nameLooksDTO := strings.HasSuffix(name, "dto") ||
+		strings.HasSuffix(name, "request") ||
+		strings.HasSuffix(name, "response") ||
+		strings.HasSuffix(name, "payload") ||
+		strings.HasSuffix(name, "model")
+	return fieldLines >= 8 && (tagLines >= fieldLines/2 || nameLooksDTO)
+}
+
+func isTrivialDeclaration(chunk *storage.ChunkMeta, content string) bool {
+	if chunk == nil {
+		return false
+	}
+	switch chunk.ChunkType {
+	case "3", "5", "6":
+		return countMeaningfulLines(content) <= 3
+	default:
+		return false
+	}
+}
+
+func isGetterSetter(chunk *storage.ChunkMeta, content string) bool {
+	name := chunk.SymbolName
+	if !(strings.HasPrefix(name, "Get") || strings.HasPrefix(name, "Set") || strings.HasPrefix(name, "Is") || strings.HasPrefix(name, "Has")) {
+		return false
+	}
+	body := functionBody(content)
+	if body == "" {
+		return false
+	}
+	statements := splitStatements(body)
+	if len(statements) != 1 {
+		return false
+	}
+	stmt := strings.TrimSpace(statements[0])
+	if strings.HasPrefix(stmt, "return ") {
+		expr := strings.TrimSpace(strings.TrimPrefix(stmt, "return "))
+		return isFieldAccess(expr)
+	}
+	if strings.Contains(stmt, "=") && !strings.Contains(stmt, ":=") {
+		parts := strings.SplitN(stmt, "=", 2)
+		return isFieldAccess(strings.TrimSpace(parts[0]))
+	}
+	return false
+}
+
+func isTrivialConstructor(chunk *storage.ChunkMeta, content string) bool {
+	name := chunk.SymbolName
+	if !(strings.HasPrefix(name, "New") || strings.HasPrefix(name, "MustNew")) {
+		return false
+	}
+	body := functionBody(content)
+	if body == "" {
+		return false
+	}
+	statements := splitStatements(body)
+	if len(statements) != 1 {
+		return false
+	}
+	stmt := strings.TrimSpace(statements[0])
+	if !strings.HasPrefix(stmt, "return ") {
+		return false
+	}
+	expr := strings.TrimSpace(strings.TrimPrefix(stmt, "return "))
+	if strings.HasPrefix(expr, "&") {
+		expr = strings.TrimSpace(strings.TrimPrefix(expr, "&"))
+	}
+	return strings.Contains(expr, "{") && strings.HasSuffix(expr, "}")
+}
+
+func isSimpleWrapper(chunk *storage.ChunkMeta, content string) bool {
+	if isEntrypointChunk(chunk) {
+		return false
+	}
+	body := functionBody(content)
+	if body == "" || countMeaningfulLines(body) > 3 {
+		return false
+	}
+	statements := splitStatements(body)
+	if len(statements) != 1 {
+		return false
+	}
+	stmt := strings.TrimSpace(statements[0])
+	if strings.HasPrefix(stmt, "return ") {
+		stmt = strings.TrimSpace(strings.TrimPrefix(stmt, "return "))
+	}
+	return looksLikeSingleCall(stmt)
+}
+
+func functionBody(content string) string {
+	start := strings.Index(content, "{")
+	end := strings.LastIndex(content, "}")
+	if start < 0 || end <= start {
+		return ""
+	}
+	return strings.TrimSpace(content[start+1 : end])
+}
+
+func splitStatements(body string) []string {
+	var out []string
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "//") {
+			continue
+		}
+		for _, part := range strings.Split(line, ";") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				out = append(out, part)
+			}
+		}
+	}
+	return out
+}
+
+func countMeaningfulLines(content string) int {
+	count := 0
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "//") {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
+func isFieldAccess(expr string) bool {
+	expr = strings.TrimSpace(expr)
+	return strings.Contains(expr, ".") && !strings.Contains(expr, "(") && !strings.Contains(expr, "[")
+}
+
+func looksLikeSingleCall(stmt string) bool {
+	stmt = strings.TrimSpace(stmt)
+	if strings.Contains(stmt, "{") || strings.Contains(stmt, "}") {
+		return false
+	}
+	open := strings.Index(stmt, "(")
+	close := strings.LastIndex(stmt, ")")
+	if open <= 0 || close != len(stmt)-1 {
+		return false
+	}
+	prefix := strings.TrimSpace(stmt[:open])
+	if prefix == "" {
+		return false
+	}
+	if strings.ContainsAny(prefix, "+-*/%<>=!&|") {
+		return false
+	}
+	return true
 }
 
 func fileLineKey(filePath string, line int) string {
