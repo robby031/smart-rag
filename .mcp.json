@@ -6,7 +6,7 @@
         "run", "-i", "--rm",
         "-v", "/Users/bagusdwiharianto/Development/go/smart-rag:/repo:ro",
         "-v", "smart-rag-data:/data",
-        "smart-rag:latest"
+        "ghcr.io/robby031/smart-rag:latest"
       ]
     }
   }
