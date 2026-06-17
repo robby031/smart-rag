@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    tags: ['v*']
 
 permissions:
   contents: write
@@ -19,12 +19,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Generate version tag
+      - name: Parse version from tag
         id: ver
         run: |
-          VERSION=$(grep '^VERSION' Makefile | head -1 | awk -F'=' '{print $2}' | tr -d ' ')
-          SHORT_SHA="${GITHUB_SHA::7}"
-          TAG="v${VERSION}-${SHORT_SHA}"
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}"         >> "$GITHUB_OUTPUT"
 
