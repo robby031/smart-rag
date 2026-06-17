@@ -115,10 +115,10 @@ func (e *Engine) contextNearby(primary *storage.ChunkMeta) string {
 		chunk *storage.ChunkMeta
 	}
 	var nearby []nearbyChunk
-	if idx > 0 && chunkAutoContextEligible(chunks[idx-1]) {
+	if idx > 0 && e.chunkAutoContextEligible(chunks[idx-1]) {
 		nearby = append(nearby, nearbyChunk{label: "previous", chunk: chunks[idx-1]})
 	}
-	if idx+1 < len(chunks) && chunkAutoContextEligible(chunks[idx+1]) {
+	if idx+1 < len(chunks) && e.chunkAutoContextEligible(chunks[idx+1]) {
 		nearby = append(nearby, nearbyChunk{label: "next", chunk: chunks[idx+1]})
 	}
 	if len(nearby) == 0 {
@@ -174,7 +174,7 @@ func (e *Engine) relatedDefinitions(symbol, primaryID string) []string {
 		if def.ID == primaryID {
 			continue
 		}
-		if !chunkAutoContextEligible(def) {
+		if !e.chunkAutoContextEligible(def) {
 			continue
 		}
 		lines = append(lines, fmt.Sprintf("definition: %s (%s:%d-%d)", def.SymbolName, def.FilePath, def.StartLine, def.EndLine))
