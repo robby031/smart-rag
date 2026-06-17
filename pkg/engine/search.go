@@ -114,6 +114,11 @@ func rankSearchResult(q Query, queryTokens map[string]int, bm25Score float64, ch
 		details = append(details, "boost path_filter=0.0500")
 	}
 
+	if weight := chunkContextWeight(chunk); weight < 1 {
+		score *= weight
+		details = append(details, fmt.Sprintf("penalty reachability=%s weight=%.4f", valueOrUnknown(chunk.Reachability), weight))
+	}
+
 	details[0] = fmt.Sprintf("%s final=%.4f", details[0], score)
 	return score, details
 }
@@ -139,4 +144,11 @@ func normalizeSearchText(s string) string {
 		}
 	}
 	return b.String()
+}
+
+func valueOrUnknown(s string) string {
+	if s == "" {
+		return ReachabilityUnknown
+	}
+	return s
 }
