@@ -58,6 +58,28 @@ func (s *Store) Put(key, value []byte) error {
 	})
 }
 
+// KVPair is a key-value pair for batch writes.
+type KVPair struct {
+	Key   []byte
+	Value []byte
+}
+
+// BatchPut writes all pairs in a single transaction (one fsync).
+func (s *Store) BatchPut(pairs []KVPair) error {
+	if len(pairs) == 0 {
+		return nil
+	}
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("rag"))
+		for _, p := range pairs {
+			if err := b.Put(p.Key, p.Value); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // PutWithTTL simulates TTL by storing expiry timestamp before value.
 func (s *Store) PutWithTTL(key, value []byte, ttl time.Duration) error {
 	expiry := time.Now().Add(ttl).UnixNano()

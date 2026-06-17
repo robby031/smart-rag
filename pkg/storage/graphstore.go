@@ -144,6 +144,40 @@ func (gs *GraphStore) LoadImports() (map[string]map[string]bool, error) {
 	return result, nil
 }
 
+func (gs *GraphStore) SaveNodeBatch(nodes []GraphNode) error {
+	pairs := make([]KVPair, 0, len(nodes))
+	for _, node := range nodes {
+		data, err := json.Marshal(node)
+		if err != nil {
+			return fmt.Errorf("marshal node: %w", err)
+		}
+		pairs = append(pairs, KVPair{Key: []byte(graphNodePrefix + node.ID), Value: data})
+	}
+	return gs.kv.BatchPut(pairs)
+}
+
+func (gs *GraphStore) SaveEdgeBatch(edges []GraphEdge) error {
+	pairs := make([]KVPair, 0, len(edges))
+	for _, edge := range edges {
+		data, err := json.Marshal(edge)
+		if err != nil {
+			return fmt.Errorf("marshal edge: %w", err)
+		}
+		key := fmt.Sprintf("%s%s\x00%s", graphEdgePrefix, edge.Caller, edge.Callee)
+		pairs = append(pairs, KVPair{Key: []byte(key), Value: data})
+	}
+	return gs.kv.BatchPut(pairs)
+}
+
+func (gs *GraphStore) SaveImportBatch(pairs [][2]string) error {
+	kvPairs := make([]KVPair, 0, len(pairs))
+	for _, p := range pairs {
+		key := importPrefix + p[0] + "\x00" + p[1]
+		kvPairs = append(kvPairs, KVPair{Key: []byte(key), Value: []byte(p[1])})
+	}
+	return gs.kv.BatchPut(kvPairs)
+}
+
 func (gs *GraphStore) ClearGraph() error {
 	prefixes := []string{graphNodePrefix, graphEdgePrefix, importPrefix}
 	for _, prefix := range prefixes {

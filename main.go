@@ -62,7 +62,9 @@ func main() {
 		if err := indexRepo(eng, absRepo); err != nil {
 			log.Fatalf("Failed to index repository: %v", err)
 		}
-		eng.FinalizeIndex()
+		if err := eng.FinalizeIndex(); err != nil {
+			log.Fatalf("Failed to finalize index: %v", err)
+		}
 	} else {
 		syncer := indexer.NewSyncer(eng, indexStore, absRepo)
 		indexed, deleted, err := syncer.Sync(context.Background())

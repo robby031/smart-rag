@@ -65,9 +65,6 @@ func (cg *CallGraph) AddNode(n *Node) {
 	id := n.ID()
 	if _, ok := cg.Nodes[id]; !ok {
 		cg.Nodes[id] = n
-		if cg.store != nil {
-			cg.store.SaveNode(storageNode(n))
-		}
 	}
 }
 
@@ -84,15 +81,6 @@ func (cg *CallGraph) AddEdge(caller, callee string, line int, file string) {
 		cg.InEdges[callee][caller] = true
 		key := caller + "\x00" + callee
 		cg.EdgeMeta[key] = &edgeMeta{Line: line, File: file}
-
-		if cg.store != nil {
-			cg.store.SaveEdge(storage.GraphEdge{
-				Caller: caller,
-				Callee: callee,
-				Line:   line,
-				File:   file,
-			})
-		}
 	}
 }
 
@@ -225,6 +213,33 @@ func (cg *CallGraph) Stats() map[string]int {
 	}
 }
 
+// Flush writes all in-memory nodes and edges to persistent storage in one batch transaction.
+func (cg *CallGraph) Flush() error {
+	if cg.store == nil {
+		return nil
+	}
+	nodes := make([]storage.GraphNode, 0, len(cg.Nodes))
+	for _, n := range cg.Nodes {
+		nodes = append(nodes, storageNode(n))
+	}
+	if err := cg.store.SaveNodeBatch(nodes); err != nil {
+		return err
+	}
+	edges := make([]storage.GraphEdge, 0, len(cg.EdgeMeta))
+	for key, meta := range cg.EdgeMeta {
+		parts := strings.SplitN(key, "\x00", 2)
+		if len(parts) == 2 {
+			edges = append(edges, storage.GraphEdge{
+				Caller: parts[0],
+				Callee: parts[1],
+				Line:   meta.Line,
+				File:   meta.File,
+			})
+		}
+	}
+	return cg.store.SaveEdgeBatch(edges)
+}
+
 func (cg *CallGraph) SortedNodes() []*Node {
 	result := make([]*Node, 0, len(cg.Nodes))
 	for _, n := range cg.Nodes {
@@ -326,12 +341,23 @@ func (ig *ImportGraph) AddAST(pkg string, f *ast.File) error {
 				ig.InEdges[importPath] = make(map[string]bool)
 			}
 			ig.InEdges[importPath][pkg] = true
-			if ig.store != nil {
-				ig.store.SaveImport(pkg, importPath)
-			}
 		}
 	}
 	return nil
+}
+
+// Flush writes all in-memory import edges to persistent storage in one batch transaction.
+func (ig *ImportGraph) Flush() error {
+	if ig.store == nil {
+		return nil
+	}
+	var pairs [][2]string
+	for pkg, deps := range ig.OutEdges {
+		for dep := range deps {
+			pairs = append(pairs, [2]string{pkg, dep})
+		}
+	}
+	return ig.store.SaveImportBatch(pairs)
 }
 
 func (ig *ImportGraph) Dependencies(pkg string) []string {

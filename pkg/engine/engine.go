@@ -103,6 +103,7 @@ func (e *Engine) IndexFile(ctx context.Context, filePath, src string) error {
 	}
 	chunks := e.chunker.Chunk(decls, filePath, meta)
 
+	storeMetas := make([]storage.ChunkMeta, 0, len(chunks))
 	for _, ch := range chunks {
 		tokens := e.tokenizer.Tokenize(ch.Content)
 		freq := make(map[string]int)
@@ -118,21 +119,19 @@ func (e *Engine) IndexFile(ctx context.Context, filePath, src string) error {
 		}
 		e.sparse.AddDocument(vec, ch.ID)
 
-		chunkType := fmt.Sprintf("%d", ch.ChunkType)
-
-		storeMeta := storage.ChunkMeta{
+		storeMetas = append(storeMetas, storage.ChunkMeta{
 			ID:         ch.ID,
 			FilePath:   ch.FilePath,
-			ChunkType:  chunkType,
+			ChunkType:  fmt.Sprintf("%d", ch.ChunkType),
 			SymbolName: ch.SymbolName,
 			Signature:  ch.Signature,
 			StartLine:  ch.StartLine,
 			EndLine:    ch.EndLine,
 			Content:    ch.Content,
-		}
-		if err := e.chunkStore.Put(storeMeta); err != nil {
-			return fmt.Errorf("store chunk %s: %w", ch.ID, err)
-		}
+		})
+	}
+	if err := e.chunkStore.PutAll(storeMetas); err != nil {
+		return fmt.Errorf("store chunks: %w", err)
 	}
 
 	if err := e.callGraph.ParseAST(astFile, e.parser.FileSet(), filePath, fileInfo.Package); err != nil {
@@ -145,9 +144,13 @@ func (e *Engine) IndexFile(ctx context.Context, filePath, src string) error {
 	return nil
 }
 
-func (e *Engine) FinalizeIndex() {
+func (e *Engine) FinalizeIndex() error {
 	e.bm25.Build()
 	e.sparse.Build()
+	if err := e.callGraph.Flush(); err != nil {
+		return fmt.Errorf("flush call graph: %w", err)
+	}
+	return e.importGraph.Flush()
 }
 
 func (e *Engine) Query(ctx context.Context, q Query) (*Response, error) {

@@ -56,7 +56,9 @@ func main() {
 		if err := indexRepo(eng, absRepo); err != nil {
 			log.Fatal(err)
 		}
-		eng.FinalizeIndex()
+		if err := eng.FinalizeIndex(); err != nil {
+			log.Fatal(err)
+		}
 		indexedCount = goFiles
 	} else {
 		syncer := indexer.NewSyncer(eng, indexStore, absRepo)

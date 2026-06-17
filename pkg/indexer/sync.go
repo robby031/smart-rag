@@ -14,7 +14,7 @@ import (
 
 type IndexEngine interface {
 	IndexFile(ctx context.Context, filePath, src string) error
-	FinalizeIndex()
+	FinalizeIndex() error
 }
 
 type Syncer struct {
@@ -58,7 +58,9 @@ func (s *Syncer) Sync(ctx context.Context) (int, int, error) {
 		s.indexStore.DeleteHash(filePath)
 	}
 
-	s.engine.FinalizeIndex()
+	if err := s.engine.FinalizeIndex(); err != nil {
+		return indexed, len(deleted), fmt.Errorf("finalize: %w", err)
+	}
 
 	meta := &storage.IndexMeta{LastUpdated: time.Now()}
 	if m, err := s.indexStore.LoadMeta(); err == nil {

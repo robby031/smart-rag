@@ -93,3 +93,16 @@ func (cs *ChunkStore) Get(id string) (*ChunkMeta, error) {
 func (cs *ChunkStore) Delete(id string) error {
 	return cs.kv.Delete([]byte("chunk:" + id))
 }
+
+// PutAll writes all metas in a single transaction (one fsync).
+func (cs *ChunkStore) PutAll(metas []ChunkMeta) error {
+	pairs := make([]KVPair, 0, len(metas))
+	for _, meta := range metas {
+		data, err := json.Marshal(meta)
+		if err != nil {
+			return fmt.Errorf("marshal chunk meta %s: %w", meta.ID, err)
+		}
+		pairs = append(pairs, KVPair{Key: []byte("chunk:" + meta.ID), Value: data})
+	}
+	return cs.kv.BatchPut(pairs)
+}
