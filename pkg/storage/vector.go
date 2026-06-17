@@ -63,6 +63,8 @@ type ChunkMeta struct {
 	Content       string  `json:"content"`
 	Reachability  string  `json:"reachability,omitempty"`
 	ContextWeight float64 `json:"context_weight,omitempty"`
+	SemanticRole  string  `json:"semantic_role,omitempty"`
+	FoldReason    string  `json:"fold_reason,omitempty"`
 }
 
 type ChunkStore struct {
