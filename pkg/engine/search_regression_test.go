@@ -144,7 +144,7 @@ func TestSearchRegressionNoResults(t *testing.T) {
 
 	resp, err := eng.Query(context.Background(), Query{
 		Type: QuerySearch,
-		Text: "zzzz_unmatched_regression_query",
+		Text: "zzzzqqqq yyyyxxxx",
 		TopK: 5,
 	})
 	if err != nil {
