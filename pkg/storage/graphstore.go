@@ -184,6 +184,20 @@ func (gs *GraphStore) SaveImportBatch(pairs [][2]string) error {
 	return gs.kv.BatchPut(kvPairs)
 }
 
+func (gs *GraphStore) DeleteNodesByIDs(ids []string) error {
+	for _, id := range ids {
+		if err := gs.kv.Delete([]byte(graphNodePrefix + id)); err != nil {
+			return fmt.Errorf("delete node %s: %w", id, err)
+		}
+	}
+	return nil
+}
+
+func (gs *GraphStore) DeleteEdgesByCaller(callerID string) error {
+	prefix := graphEdgePrefix + callerID + "\x00"
+	return gs.kv.DeleteWithPrefix([]byte(prefix))
+}
+
 func (gs *GraphStore) ClearGraph() error {
 	prefixes := []string{graphNodePrefix, graphEdgePrefix, importPrefix}
 	for _, prefix := range prefixes {
