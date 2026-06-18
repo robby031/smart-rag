@@ -141,7 +141,10 @@ func (e *Engine) indexJSFileWith(
 		return fmt.Errorf("store chunks: %w", err)
 	}
 
-	// Callgraph and importgraph are Go-only for now; skip for JS/TS files.
+	e.callGraph.DeleteByFile(filePath)
+	if err := e.callGraph.ParseJSAST(filePath, src, fileInfo.Package); err != nil {
+		return fmt.Errorf("js callgraph: %w", err)
+	}
 	return nil
 }
 
