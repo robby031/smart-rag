@@ -14,6 +14,8 @@ Smart RAG is a code intelligence engine based on RAG (Retrieval-Augmented Genera
 - Impact analysis (blast radius of changes)
 - Read code snippets by file:line
 
+**Supported languages:** Go, JavaScript, TypeScript (`.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`)
+
 Smart RAG runs as an MCP server that communicates via JSON-RPC on stdio.
 
 ---
@@ -214,9 +216,11 @@ After setup, test in Claude Desktop:
 3. Try queries:
    - `rag_status`: "check smart-rag health"
    - `search_code`: "keyword search in codebase"
-   - `find_definition`: "function name to find definition"
-   - `get_callers`: "function ID"
-   - `impact_analysis`: "function/package name"
+   - `find_definition`: symbol name — works for Go and JS/TS (functions, classes, types, enums)
+   - `get_callers` / `get_callees`: function ID format:
+     - Go: `pkg.FuncName` or `pkg.(ReceiverType).Method`
+     - JS/TS: `module.funcName` or `module.(ClassName).method`
+   - `impact_analysis`: "function or package/module name"
 
 If tools don't appear, check:
 - Config file has valid JSON (use jsonlint)

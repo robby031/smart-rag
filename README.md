@@ -2,6 +2,8 @@
 
 RAG-based code intelligence engine with MCP server. Index your codebase and query it via natural language, symbol search, call graph, and impact analysis.
 
+**Supported languages:** Go, JavaScript, TypeScript (including JSX, TSX, ES modules)
+
 ## Architecture
 
 ![smart-rag architecture](docs/architecture.svg)
@@ -166,10 +168,10 @@ Run `make install` or add to your MCP client config:
 
 - `rag_status` — health check for version, index, graph, BM25, paths, and last sync
 - `search_code` — ranked BM25 code search with stable tie-breakers and filters
-- `find_definition` — go-to-definition for a symbol
+- `find_definition` — go-to-definition for a symbol (Go and JS/TS: functions, classes, types, enums, interfaces)
 - `find_references` — find all usages of a symbol
-- `get_callers` / `get_callees` — call graph navigation
-- `impact_analysis` — analyze change impact
+- `get_callers` / `get_callees` — call graph navigation (Go: `pkg.Func`; JS/TS: `module.func` or `module.(Class).method`)
+- `impact_analysis` — analyze change impact across the call graph and import graph
 - `context_pack` — retrieve relevant code context
 - `read_snippet` — read file snippet by path and line range
 
@@ -188,7 +190,7 @@ make clean        # Remove artifacts
 - `REPO=path` — source repository (default: `.`)
 - `DB=path` — database directory (default: `./rag-data`)
 - `PRUNING=off|soft|hard` — index pruning mode (default: `soft`)
-- `VERSION=x.y.z` — binary version (default: `0.3.4`)
+- `VERSION=x.y.z` — binary version (default: `0.3.5`)
 
 `--pruning` maps to the index pruning setting `index.pruning.mode`.
 
@@ -205,22 +207,22 @@ Benchmarked on the smart-rag repository itself (30 Go files, 3659 lines).
 ```
 smart-rag performance matrix
 ================================
-  Version       : 0.3.4
+  Version       : 0.3.5
   Repository    : /Users/bagusdwiharianto/Development/go/smart-rag
-  Go files      : 45 (7551 lines)
-  Chunks        : 413
-  Graph nodes   : 306
-  Graph edges   : 1207
-  Index time    : 154ms
+  Go files      : 51 (8950 lines)
+  Chunks        : 478
+  Graph nodes   : 362
+  Graph edges   : 1505
+  Index time    : 181ms
 --------------------------------
   Metric                      Target        Actual
-  Cold index (  45 files)  ok  < 5-8s       154ms
-  Projected   (1000 files) ok  < 5-8s       ~3.428s  [from 45 files]
-  Incremental (    1 file) ok  < 1-2s       161ms
-  Query search             ok  < 50-80ms    median 4ms     p95 370µs  [413 chunks]
-  Query find-def           ok  < 50-80ms    median 2ms      p95 1ms  [413 chunks]
-  Query callers            ok  < 50-80ms    median < 1µs     p95 < 1µs  [413 chunks]
-  Binary size              ok  < 15-20 MB   6.9 MB
+  Cold index (  51 files)  ok  < 5-8s       181ms
+  Projected   (1000 files) ok  < 5-8s       ~3.545s  [from 51 files]
+  Incremental (    1 file) ok  < 1-2s       160ms
+  Query search             ok  < 50-80ms    median 5ms       p95 5ms  [478 chunks]
+  Query find-def           ok  < 50-80ms    median 2ms       p95 2ms  [478 chunks]
+  Query callers            ok  < 50-80ms    median < 1µs     p95 < 1µs  [478 chunks]
+  Binary size              ok  < 15-20 MB   10.2 MB
   RAM during index         ok  < 80-120 MB  2.8 MB heap delta
-  Query 100k docs          warn  ~20-40ms     ~1.031s projected  [linear from 413 chunks]
+  Query 100k docs          crit  ~20-40ms     ~1.054s projected  [linear from 478 chunks]
 ```

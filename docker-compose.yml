@@ -4,7 +4,7 @@ services:
     build:
       context: .
       args:
-        VERSION: "0.3.4"
+        VERSION: "0.3.5"
     stdin_open: true   # keep stdin open for MCP stdio transport
     tty: false
     volumes:
@@ -19,7 +19,7 @@ services:
     build:
       context: .
       args:
-        VERSION: "0.3.4"
+        VERSION: "0.3.5"
     volumes:
       - ${REPO_DIR:-.}:/repo:ro
       - rag-data:/data

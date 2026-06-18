@@ -113,7 +113,7 @@ func (s *Syncer) gitDiff() (changed, deleted []string, err error) {
 	}
 
 	for f := range changedSet {
-		if filepath.Ext(f) != ".go" {
+		if !isIndexableExt(filepath.Ext(f)) {
 			continue
 		}
 		absPath := filepath.Join(s.repoDir, f)
@@ -141,7 +141,7 @@ func (s *Syncer) hashCompare() (changed, deleted []string, err error) {
 			}
 			return nil
 		}
-		if filepath.Ext(path) != ".go" {
+		if !isIndexableExt(filepath.Ext(path)) {
 			return nil
 		}
 		relPath, _ := filepath.Rel(s.repoDir, path)
@@ -158,6 +158,14 @@ func (s *Syncer) hashCompare() (changed, deleted []string, err error) {
 	return changed, nil, nil
 }
 
+func isIndexableExt(ext string) bool {
+	switch ext {
+	case ".go", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs":
+		return true
+	}
+	return false
+}
+
 func (s *Syncer) allFiles() []string {
 	var files []string
 	filepath.Walk(s.repoDir, func(path string, info os.FileInfo, err error) error {
@@ -170,7 +178,7 @@ func (s *Syncer) allFiles() []string {
 			}
 			return nil
 		}
-		if filepath.Ext(path) != ".go" {
+		if !isIndexableExt(filepath.Ext(path)) {
 			return nil
 		}
 		relPath, _ := filepath.Rel(s.repoDir, path)

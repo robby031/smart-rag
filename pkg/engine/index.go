@@ -25,6 +25,29 @@ func (e *Engine) indexFileWith(
 	addDoc func(map[string]int, string),
 	chunkSink func([]storage.ChunkMeta) error,
 ) error {
+	generated := isGeneratedSource(src)
+	sink := chunkSink
+	if generated {
+		sink = func(metas []storage.ChunkMeta) error {
+			for i := range metas {
+				metas[i].SemanticRole = SemanticRoleBoilerplate
+				metas[i].FoldReason = FoldReasonGeneratedCode
+				metas[i].ContextWeight = generatedContextWeight
+			}
+			return chunkSink(metas)
+		}
+	}
+	if indexer.IsJSLike(filePath) {
+		return e.indexJSFileWith(filePath, src, addDoc, sink)
+	}
+	return e.indexGoFileWith(filePath, src, addDoc, sink)
+}
+
+func (e *Engine) indexGoFileWith(
+	filePath, src string,
+	addDoc func(map[string]int, string),
+	chunkSink func([]storage.ChunkMeta) error,
+) error {
 	if err := e.chunkStore.DeleteByFile(filePath); err != nil {
 		return fmt.Errorf("delete stale chunks %s: %w", filePath, err)
 	}
@@ -41,7 +64,6 @@ func (e *Engine) indexFileWith(
 		IsTest:  fileInfo.IsTest,
 	}
 	chunks := e.chunker.Chunk(decls, filePath, meta)
-	isGenerated := isGeneratedSource(src)
 
 	storeMetas := make([]storage.ChunkMeta, 0, len(chunks))
 	for _, ch := range chunks {
@@ -62,11 +84,6 @@ func (e *Engine) indexFileWith(
 			EndLine:    ch.EndLine,
 			Content:    ch.Content,
 		})
-		if isGenerated {
-			storeMetas[len(storeMetas)-1].SemanticRole = SemanticRoleBoilerplate
-			storeMetas[len(storeMetas)-1].FoldReason = FoldReasonGeneratedCode
-			storeMetas[len(storeMetas)-1].ContextWeight = generatedContextWeight
-		}
 	}
 	if err := chunkSink(storeMetas); err != nil {
 		return fmt.Errorf("store chunks: %w", err)
@@ -81,6 +98,60 @@ func (e *Engine) indexFileWith(
 		return fmt.Errorf("import graph: %w", err)
 	}
 
+	return nil
+}
+
+func (e *Engine) indexJSFileWith(
+	filePath, src string,
+	addDoc func(map[string]int, string),
+	chunkSink func([]storage.ChunkMeta) error,
+) error {
+	if err := e.chunkStore.DeleteByFile(filePath); err != nil {
+		return fmt.Errorf("delete stale chunks %s: %w", filePath, err)
+	}
+
+	decls, fileInfo, err := indexer.ParseJSFile(filePath, src)
+	if err != nil {
+		return fmt.Errorf("parse js: %w", err)
+	}
+	indexer.SetContent(decls, src)
+
+	meta := indexer.FileMeta{
+		Package: fileInfo.Package,
+		Imports: fileInfo.Imports,
+		IsTest:  fileInfo.IsTest,
+	}
+	chunks := e.chunker.Chunk(decls, filePath, meta)
+
+	storeMetas := make([]storage.ChunkMeta, 0, len(chunks))
+	for _, ch := range chunks {
+		tokens := e.tokenizer.Tokenize(ch.Content)
+		freq := make(map[string]int)
+		for tok, count := range tokens {
+			freq[tok] = count
+		}
+		addDoc(freq, ch.ID)
+
+		storeMetas = append(storeMetas, storage.ChunkMeta{
+			ID:         ch.ID,
+			FilePath:   ch.FilePath,
+			ChunkType:  fmt.Sprintf("%d", ch.ChunkType),
+			SymbolName: ch.SymbolName,
+			Signature:  ch.Signature,
+			StartLine:  ch.StartLine,
+			EndLine:    ch.EndLine,
+			Content:    ch.Content,
+		})
+	}
+	if err := chunkSink(storeMetas); err != nil {
+		return fmt.Errorf("store chunks: %w", err)
+	}
+
+	e.callGraph.DeleteByFile(filePath)
+	if err := e.callGraph.ParseJSAST(filePath, src, fileInfo.Package); err != nil {
+		return fmt.Errorf("js callgraph: %w", err)
+	}
+	e.importGraph.AddImports(fileInfo.Package, fileInfo.Imports)
 	return nil
 }
 
