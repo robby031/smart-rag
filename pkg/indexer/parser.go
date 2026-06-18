@@ -18,6 +18,8 @@ const (
 	DeclInterface
 	DeclVar
 	DeclConst
+	DeclClass // JS/TS class
+	DeclEnum  // TS enum
 )
 
 type ParsedDecl struct {

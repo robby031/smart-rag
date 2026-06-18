@@ -168,9 +168,9 @@ func mapDeclKind(kind DeclKind) ChunkType {
 	switch kind {
 	case DeclFunc:
 		return ChunkFunc
-	case DeclType:
+	case DeclType, DeclEnum:
 		return ChunkTypeDecl
-	case DeclStruct:
+	case DeclStruct, DeclClass:
 		return ChunkStruct
 	case DeclInterface:
 		return ChunkInterface

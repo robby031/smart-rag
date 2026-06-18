@@ -25,6 +25,17 @@ func (e *Engine) indexFileWith(
 	addDoc func(map[string]int, string),
 	chunkSink func([]storage.ChunkMeta) error,
 ) error {
+	if indexer.IsJSLike(filePath) {
+		return e.indexJSFileWith(filePath, src, addDoc, chunkSink)
+	}
+	return e.indexGoFileWith(filePath, src, addDoc, chunkSink)
+}
+
+func (e *Engine) indexGoFileWith(
+	filePath, src string,
+	addDoc func(map[string]int, string),
+	chunkSink func([]storage.ChunkMeta) error,
+) error {
 	if err := e.chunkStore.DeleteByFile(filePath); err != nil {
 		return fmt.Errorf("delete stale chunks %s: %w", filePath, err)
 	}
@@ -81,6 +92,56 @@ func (e *Engine) indexFileWith(
 		return fmt.Errorf("import graph: %w", err)
 	}
 
+	return nil
+}
+
+func (e *Engine) indexJSFileWith(
+	filePath, src string,
+	addDoc func(map[string]int, string),
+	chunkSink func([]storage.ChunkMeta) error,
+) error {
+	if err := e.chunkStore.DeleteByFile(filePath); err != nil {
+		return fmt.Errorf("delete stale chunks %s: %w", filePath, err)
+	}
+
+	decls, fileInfo, err := indexer.ParseJSFile(filePath, src)
+	if err != nil {
+		return fmt.Errorf("parse js: %w", err)
+	}
+	indexer.SetContent(decls, src)
+
+	meta := indexer.FileMeta{
+		Package: fileInfo.Package,
+		Imports: fileInfo.Imports,
+		IsTest:  fileInfo.IsTest,
+	}
+	chunks := e.chunker.Chunk(decls, filePath, meta)
+
+	storeMetas := make([]storage.ChunkMeta, 0, len(chunks))
+	for _, ch := range chunks {
+		tokens := e.tokenizer.Tokenize(ch.Content)
+		freq := make(map[string]int)
+		for tok, count := range tokens {
+			freq[tok] = count
+		}
+		addDoc(freq, ch.ID)
+
+		storeMetas = append(storeMetas, storage.ChunkMeta{
+			ID:         ch.ID,
+			FilePath:   ch.FilePath,
+			ChunkType:  fmt.Sprintf("%d", ch.ChunkType),
+			SymbolName: ch.SymbolName,
+			Signature:  ch.Signature,
+			StartLine:  ch.StartLine,
+			EndLine:    ch.EndLine,
+			Content:    ch.Content,
+		})
+	}
+	if err := chunkSink(storeMetas); err != nil {
+		return fmt.Errorf("store chunks: %w", err)
+	}
+
+	// Callgraph and importgraph are Go-only for now; skip for JS/TS files.
 	return nil
 }
 

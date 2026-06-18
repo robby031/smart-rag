@@ -137,6 +137,14 @@ func (s *ASTSearch) FindReferences(filePath, src, symbol string) ([]MatchResult,
 	return results, nil
 }
 
+func isIndexableFile(path string) bool {
+	switch filepath.Ext(path) {
+	case ".go", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs":
+		return true
+	}
+	return false
+}
+
 func WalkFiles(root string, maxFiles int) ([]string, error) {
 	var files []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
@@ -149,7 +157,7 @@ func WalkFiles(root string, maxFiles int) ([]string, error) {
 		if info.IsDir() && (info.Name() == "testdata" || info.Name() == "vendor") {
 			return filepath.SkipDir
 		}
-		if !info.IsDir() && strings.HasSuffix(path, ".go") && !strings.Contains(path, "/.") {
+		if !info.IsDir() && isIndexableFile(path) && !strings.Contains(path, "/.") {
 			files = append(files, path)
 		}
 		return nil
