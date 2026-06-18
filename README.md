@@ -188,7 +188,7 @@ make clean        # Remove artifacts
 - `REPO=path` — source repository (default: `.`)
 - `DB=path` — database directory (default: `./rag-data`)
 - `PRUNING=off|soft|hard` — index pruning mode (default: `soft`)
-- `VERSION=x.y.z` — binary version (default: `0.3.3`)
+- `VERSION=x.y.z` — binary version (default: `0.3.4`)
 
 `--pruning` maps to the index pruning setting `index.pruning.mode`.
 
@@ -205,7 +205,7 @@ Benchmarked on the smart-rag repository itself (30 Go files, 3659 lines).
 ```
 smart-rag performance matrix
 ================================
-  Version       : 0.3.3
+  Version       : 0.3.4
   Repository    : /Users/bagusdwiharianto/Development/go/smart-rag
   Go files      : 45 (7551 lines)
   Chunks        : 413
