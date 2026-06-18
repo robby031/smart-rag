@@ -25,10 +25,22 @@ func (e *Engine) indexFileWith(
 	addDoc func(map[string]int, string),
 	chunkSink func([]storage.ChunkMeta) error,
 ) error {
-	if indexer.IsJSLike(filePath) {
-		return e.indexJSFileWith(filePath, src, addDoc, chunkSink)
+	generated := isGeneratedSource(src)
+	sink := chunkSink
+	if generated {
+		sink = func(metas []storage.ChunkMeta) error {
+			for i := range metas {
+				metas[i].SemanticRole = SemanticRoleBoilerplate
+				metas[i].FoldReason = FoldReasonGeneratedCode
+				metas[i].ContextWeight = generatedContextWeight
+			}
+			return chunkSink(metas)
+		}
 	}
-	return e.indexGoFileWith(filePath, src, addDoc, chunkSink)
+	if indexer.IsJSLike(filePath) {
+		return e.indexJSFileWith(filePath, src, addDoc, sink)
+	}
+	return e.indexGoFileWith(filePath, src, addDoc, sink)
 }
 
 func (e *Engine) indexGoFileWith(
@@ -52,7 +64,6 @@ func (e *Engine) indexGoFileWith(
 		IsTest:  fileInfo.IsTest,
 	}
 	chunks := e.chunker.Chunk(decls, filePath, meta)
-	isGenerated := isGeneratedSource(src)
 
 	storeMetas := make([]storage.ChunkMeta, 0, len(chunks))
 	for _, ch := range chunks {
@@ -73,11 +84,6 @@ func (e *Engine) indexGoFileWith(
 			EndLine:    ch.EndLine,
 			Content:    ch.Content,
 		})
-		if isGenerated {
-			storeMetas[len(storeMetas)-1].SemanticRole = SemanticRoleBoilerplate
-			storeMetas[len(storeMetas)-1].FoldReason = FoldReasonGeneratedCode
-			storeMetas[len(storeMetas)-1].ContextWeight = generatedContextWeight
-		}
 	}
 	if err := chunkSink(storeMetas); err != nil {
 		return fmt.Errorf("store chunks: %w", err)
@@ -145,6 +151,7 @@ func (e *Engine) indexJSFileWith(
 	if err := e.callGraph.ParseJSAST(filePath, src, fileInfo.Package); err != nil {
 		return fmt.Errorf("js callgraph: %w", err)
 	}
+	e.importGraph.AddImports(fileInfo.Package, fileInfo.Imports)
 	return nil
 }
 

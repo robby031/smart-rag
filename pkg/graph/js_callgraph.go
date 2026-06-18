@@ -43,6 +43,23 @@ func jsTopLevel(cg *CallGraph, node *sitter.Node, src []byte, file, pkg string) 
 		for i := 0; i < int(node.ChildCount()); i++ {
 			jsTopLevel(cg, node.Child(i), src, file, pkg)
 		}
+	case "internal_module", "module":
+		jsWalkNamespace(cg, node, src, file, pkg)
+
+	case "expression_statement":
+		if node.ChildCount() > 0 {
+			jsTopLevel(cg, node.Child(0), src, file, pkg)
+		}
+	}
+}
+
+func jsWalkNamespace(cg *CallGraph, node *sitter.Node, src []byte, file, pkg string) {
+	body := jsFirstChild(node, "statement_block")
+	if body == nil {
+		return
+	}
+	for i := 0; i < int(body.ChildCount()); i++ {
+		jsTopLevel(cg, body.Child(i), src, file, pkg)
 	}
 }
 
@@ -134,11 +151,15 @@ func jsResolveCallee(fn *sitter.Node, src []byte, pkg, recv string) string {
 			return ""
 		}
 		propName := string(prop.Content(src))
-		if obj.Type() == "this" && recv != "" {
-			return pkg + ".(" + recv + ")." + propName
+		switch obj.Type() {
+		case "this":
+			if recv != "" {
+				return pkg + ".(" + recv + ")." + propName
+			}
+		case "super":
+			return ""
 		}
-		chain := jsMemberChain(fn, src)
-		return chain
+		return jsMemberChain(fn, src)
 	}
 	return ""
 }

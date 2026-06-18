@@ -8,9 +8,11 @@ import (
 )
 
 var typeDefChunkTypes = []string{
-	fmt.Sprintf("%d", indexer.ChunkStruct),    // struct declarations
-	fmt.Sprintf("%d", indexer.ChunkInterface), // interface declarations
-	fmt.Sprintf("%d", indexer.ChunkTypeDecl),  // type aliases, named types
+	fmt.Sprintf("%d", indexer.ChunkStruct),
+	fmt.Sprintf("%d", indexer.ChunkInterface),
+	fmt.Sprintf("%d", indexer.ChunkTypeDecl),
+	fmt.Sprintf("%d", indexer.ChunkClass),
+	fmt.Sprintf("%d", indexer.ChunkEnum),
 }
 
 func (e *Engine) findDefinition(_ context.Context, q Query, resp *Response) (*Response, error) {
@@ -46,6 +48,10 @@ func typeLabel(chunkType string) string {
 		return "struct"
 	case fmt.Sprintf("%d", indexer.ChunkInterface):
 		return "interface"
+	case fmt.Sprintf("%d", indexer.ChunkClass):
+		return "class"
+	case fmt.Sprintf("%d", indexer.ChunkEnum):
+		return "enum"
 	default:
 		return "type"
 	}

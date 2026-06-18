@@ -46,26 +46,39 @@ func (ig *ImportGraph) AddFile(pkg, path, src string) error {
 }
 
 func (ig *ImportGraph) AddAST(pkg string, f *ast.File) error {
+	if f == nil {
+		return nil
+	}
+	paths := make([]string, 0, len(f.Imports))
+	for _, imp := range f.Imports {
+		p := strings.Trim(imp.Path.Value, "\"`")
+		if strings.Contains(p, ".") {
+			paths = append(paths, p)
+		}
+	}
+	ig.AddImports(pkg, paths)
+	return nil
+}
+
+func (ig *ImportGraph) AddImports(pkg string, imports []string) {
 	ig.mu.Lock()
 	defer ig.mu.Unlock()
 	if ig.OutEdges[pkg] == nil {
 		ig.OutEdges[pkg] = make(map[string]bool)
 	}
-	for _, imp := range f.Imports {
-		importPath := strings.Trim(imp.Path.Value, "\"`")
-		if !strings.Contains(importPath, ".") {
+	for _, imp := range imports {
+		if imp == "" {
 			continue
 		}
-		if !ig.OutEdges[pkg][importPath] {
-			ig.OutEdges[pkg][importPath] = true
-			if ig.InEdges[importPath] == nil {
-				ig.InEdges[importPath] = make(map[string]bool)
+		if !ig.OutEdges[pkg][imp] {
+			ig.OutEdges[pkg][imp] = true
+			if ig.InEdges[imp] == nil {
+				ig.InEdges[imp] = make(map[string]bool)
 			}
-			ig.InEdges[importPath][pkg] = true
+			ig.InEdges[imp][pkg] = true
 			ig.dirtyPkgs[pkg] = true
 		}
 	}
-	return nil
 }
 
 func (ig *ImportGraph) Flush() error {

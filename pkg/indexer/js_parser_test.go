@@ -218,3 +218,33 @@ export const Card: React.FC<CardProps> = ({ title }) => {
 		t.Error("missing Card arrow function declaration")
 	}
 }
+
+func TestParseJSFileNamespace(t *testing.T) {
+	src := `
+namespace Http {
+  export function get(url: string) {}
+  export class Client {
+    post(url: string) {}
+  }
+}
+
+module Auth {
+  export function login() {}
+}
+`
+	decls, _, err := ParseJSFile("lib/http.ts", src)
+	if err != nil {
+		t.Fatalf("ParseJSFile namespace error: %v", err)
+	}
+
+	byName := make(map[string]ParsedDecl)
+	for _, d := range decls {
+		byName[d.Name] = d
+	}
+
+	for _, want := range []string{"get", "Client", "login"} {
+		if _, ok := byName[want]; !ok {
+			t.Errorf("missing declaration %q from namespace/module; got: %v", want, decls)
+		}
+	}
+}

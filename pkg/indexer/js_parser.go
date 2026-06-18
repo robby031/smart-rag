@@ -100,9 +100,30 @@ func jsVisitNode(node *sitter.Node, src []byte) ([]ParsedDecl, string) {
 
 	case "export_statement":
 		return jsUnwrapExport(node, src)
+
+	case "internal_module", "module":
+		return jsWalkNamespaceBody(node, src)
+
+	case "expression_statement":
+		if node.ChildCount() > 0 {
+			return jsVisitNode(node.Child(0), src)
+		}
 	}
 
 	return nil, ""
+}
+
+func jsWalkNamespaceBody(node *sitter.Node, src []byte) ([]ParsedDecl, string) {
+	body := jsFindChild(node, "statement_block")
+	if body == nil {
+		return nil, ""
+	}
+	var decls []ParsedDecl
+	for i := 0; i < int(body.ChildCount()); i++ {
+		d, _ := jsVisitNode(body.Child(i), src)
+		decls = append(decls, d...)
+	}
+	return decls, ""
 }
 
 func jsUnwrapExport(node *sitter.Node, src []byte) ([]ParsedDecl, string) {

@@ -16,6 +16,8 @@ const (
 	ChunkStruct
 	ChunkInterface
 	ChunkBlock
+	ChunkClass
+	ChunkEnum
 )
 
 type Chunk struct {
@@ -168,10 +170,14 @@ func mapDeclKind(kind DeclKind) ChunkType {
 	switch kind {
 	case DeclFunc:
 		return ChunkFunc
-	case DeclType, DeclEnum:
+	case DeclType:
 		return ChunkTypeDecl
-	case DeclStruct, DeclClass:
+	case DeclEnum:
+		return ChunkEnum
+	case DeclStruct:
 		return ChunkStruct
+	case DeclClass:
+		return ChunkClass
 	case DeclInterface:
 		return ChunkInterface
 	default:

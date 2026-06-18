@@ -46,34 +46,34 @@ func (s *SmartRAGServer) registerTools() {
 	), s.handleSearchCode)
 
 	s.mcpServer.AddTool(mcp.NewTool("find_definition",
-		mcp.WithDescription("Go-to-definition: find where a symbol is defined"),
-		mcp.WithString("symbol", mcp.Required(), mcp.Description("Symbol name (function, type, variable)")),
+		mcp.WithDescription("Find where a symbol is defined. Supports Go and JavaScript/TypeScript (functions, classes, types, enums, interfaces)."),
+		mcp.WithString("symbol", mcp.Required(), mcp.Description("Symbol name (e.g. UserService, format, UserId)")),
 	), s.handleFindDefinition)
 
 	s.mcpServer.AddTool(mcp.NewTool("find_references",
-		mcp.WithDescription("Find all locations where a symbol is used across the codebase"),
+		mcp.WithDescription("Find all locations where a symbol is used across the codebase (Go and JS/TS)"),
 		mcp.WithString("symbol", mcp.Required(), mcp.Description("Symbol name to find references for")),
 	), s.handleFindReferences)
 
 	s.mcpServer.AddTool(mcp.NewTool("get_callers",
-		mcp.WithDescription("List all functions that call the specified function"),
-		mcp.WithString("function", mcp.Required(), mcp.Description("Function ID (e.g. pkg.FuncName)")),
+		mcp.WithDescription("List all functions that call the specified function. Supports Go and JS/TS."),
+		mcp.WithString("function", mcp.Required(), mcp.Description("Function ID — Go: pkg.FuncName or pkg.(Recv).Method; JS/TS: module.funcName or module.(ClassName).method")),
 	), s.handleGetCallers)
 
 	s.mcpServer.AddTool(mcp.NewTool("get_callees",
-		mcp.WithDescription("List all functions called by the specified function"),
-		mcp.WithString("function", mcp.Required(), mcp.Description("Function ID (e.g. pkg.FuncName)")),
+		mcp.WithDescription("List all functions called by the specified function. Supports Go and JS/TS."),
+		mcp.WithString("function", mcp.Required(), mcp.Description("Function ID — Go: pkg.FuncName or pkg.(Recv).Method; JS/TS: module.funcName or module.(ClassName).method")),
 	), s.handleGetCallees)
 
 	s.mcpServer.AddTool(mcp.NewTool("impact_analysis",
-		mcp.WithDescription("Analyze blast radius: trace transitive impact of changing a function or package"),
-		mcp.WithString("symbol", mcp.Required(), mcp.Description("Function or package name")),
+		mcp.WithDescription("Analyze blast radius: trace transitive impact of changing a function or package. Supports Go and JS/TS."),
+		mcp.WithString("symbol", mcp.Required(), mcp.Description("Function or package/module name")),
 		mcp.WithNumber("depth", mcp.Description("Traversal depth (default 3)")),
 	), s.handleImpactAnalysis)
 
 	s.mcpServer.AddTool(mcp.NewTool("get_context_pack",
 		mcp.WithDescription("Retrieve full context for a code chunk, budget-limited for AI consumption"),
-		mcp.WithString("chunk_id", mcp.Required(), mcp.Description("Chunk ID (e.g. path/file.go:1-42)")),
+		mcp.WithString("chunk_id", mcp.Required(), mcp.Description("Chunk ID (e.g. path/file.go:1-42 or path/file.ts:1-42)")),
 		mcp.WithNumber("max_tokens", mcp.Description("Max characters/tokens to return (default full)")),
 	), s.handleGetContextPack)
 

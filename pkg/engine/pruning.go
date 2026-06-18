@@ -346,7 +346,7 @@ func isExportedTypeChunk(chunk *storage.ChunkMeta) bool {
 		return false
 	}
 	switch chunk.ChunkType {
-	case "3", "5", "6":
+	case "3", "5", "6", "8", "9":
 		return true
 	default:
 		return false
@@ -485,7 +485,7 @@ func isTrivialDeclaration(chunk *storage.ChunkMeta, content string) bool {
 		return false
 	}
 	switch chunk.ChunkType {
-	case "3", "5", "6":
+	case "3", "5", "6", "8", "9":
 		return countMeaningfulLines(content) <= 3
 	default:
 		return false

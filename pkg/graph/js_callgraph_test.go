@@ -89,6 +89,51 @@ const double = (x) => greet(x)
 	}
 }
 
+func TestParseJSASTSuperNoGhost(t *testing.T) {
+	src := `
+class Child extends Parent {
+  run() { super.run() }
+}
+`
+	cg := NewCallGraph()
+	if err := cg.ParseJSAST("child.ts", src, "child"); err != nil {
+		t.Fatalf("ParseJSAST error: %v", err)
+	}
+
+	for caller, callees := range cg.OutEdges {
+		for callee := range callees {
+			if callee == "super.run" {
+				t.Errorf("ghost node %q in edges from %q", callee, caller)
+			}
+		}
+	}
+}
+
+func TestParseJSASTNamespace(t *testing.T) {
+	src := `
+namespace Http {
+  export function get(url: string) {}
+  export class Client {
+    post(url: string) { return get(url) }
+  }
+}
+`
+	cg := NewCallGraph()
+	if err := cg.ParseJSAST("lib/http.ts", src, "http"); err != nil {
+		t.Fatalf("ParseJSAST error: %v", err)
+	}
+
+	if _, ok := cg.Nodes["http.get"]; !ok {
+		t.Errorf("missing node http.get; got: %v", nodeKeys(cg))
+	}
+	if _, ok := cg.Nodes["http.(Client).post"]; !ok {
+		t.Errorf("missing node http.(Client).post; got: %v", nodeKeys(cg))
+	}
+	if !cg.OutEdges["http.(Client).post"]["http.get"] {
+		t.Errorf("missing edge (Client).post → get; edges: %v", cg.OutEdges["http.(Client).post"])
+	}
+}
+
 func nodeKeys(cg *CallGraph) []string {
 	keys := make([]string, 0, len(cg.Nodes))
 	for k := range cg.Nodes {
