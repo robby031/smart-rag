@@ -24,6 +24,10 @@ type Engine struct {
 	chunkStore  *storage.ChunkStore
 	pruningMode PruningMode
 
+	// indexMu guards all mutable engine state (bm25, callgraph, importgraph).
+	// Write-locked during IndexFile/FinalizeIndex; read-locked during Query.
+	indexMu sync.RWMutex
+
 	statusMu         sync.RWMutex
 	runtimeInfo      RuntimeInfo
 	lastIndexSummary IndexSummary
@@ -52,6 +56,9 @@ func New(kvStore *storage.Store, chunkStore *storage.ChunkStore, _ *storage.Vect
 }
 
 func (e *Engine) Query(ctx context.Context, q Query) (*Response, error) {
+	e.indexMu.RLock()
+	defer e.indexMu.RUnlock()
+
 	resp := &Response{Query: q.Text}
 
 	switch q.Type {

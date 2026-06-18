@@ -71,36 +71,46 @@ func main() {
 		DBDir:   absDB,
 	})
 
-	if *fullReindex {
-		fmt.Fprintln(os.Stderr, "Full re-indexing repository:", absRepo)
-		if err := eng.IndexDir(context.Background(), absRepo, 0); err != nil {
-			log.Fatalf("Failed to index repository: %v", err)
-		}
-		if err := eng.FinalizeIndex(); err != nil {
-			log.Fatalf("Failed to finalize index: %v", err)
-		}
-		stats := eng.Stats()
-		eng.RecordIndexSummary(engine.IndexSummary{
-			Mode:    "full",
-			Indexed: stats["chunks"],
-			Deleted: 0,
-		})
-	} else {
-		syncer := indexer.NewSyncer(eng, indexStore, absRepo)
-		indexed, deleted, err := syncer.Sync(context.Background())
-		if err != nil {
-			log.Fatalf("Failed to sync repository: %v", err)
-		}
-		fmt.Fprintf(os.Stderr, "Incremental indexing: %d files indexed, %d files removed\n", indexed, deleted)
-		eng.RecordIndexSummary(engine.IndexSummary{
-			Mode:    "incremental",
-			Indexed: indexed,
-			Deleted: deleted,
-		})
-	}
-
-	fmt.Fprintln(os.Stderr, "Starting smart-rag MCP server...")
+	// Start serving MCP immediately — persisted data (callgraph, chunks) is
+	// already loaded from BoltDB. Indexing runs in the background so clients
+	// can attach and call tools without waiting for sync to finish.
 	server := mcp.NewServer(eng, version)
+	fmt.Fprintln(os.Stderr, "Starting smart-rag MCP server...")
+
+	go func() {
+		if *fullReindex {
+			fmt.Fprintln(os.Stderr, "Full re-indexing repository:", absRepo)
+			if err := eng.IndexDir(context.Background(), absRepo, 0); err != nil {
+				log.Printf("index dir: %v", err)
+				return
+			}
+			if err := eng.FinalizeIndex(); err != nil {
+				log.Printf("finalize: %v", err)
+				return
+			}
+			stats := eng.Stats()
+			eng.RecordIndexSummary(engine.IndexSummary{
+				Mode:    "full",
+				Indexed: stats["chunks"],
+				Deleted: 0,
+			})
+		} else {
+			syncer := indexer.NewSyncer(eng, indexStore, absRepo)
+			indexed, deleted, err := syncer.Sync(context.Background())
+			if err != nil {
+				log.Printf("sync: %v", err)
+				return
+			}
+			fmt.Fprintf(os.Stderr, "Incremental sync: %d files indexed, %d removed\n", indexed, deleted)
+			eng.RecordIndexSummary(engine.IndexSummary{
+				Mode:    "incremental",
+				Indexed: indexed,
+				Deleted: deleted,
+			})
+		}
+		fmt.Fprintln(os.Stderr, "Indexing complete.")
+	}()
+
 	if err := server.Serve("stdio"); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}

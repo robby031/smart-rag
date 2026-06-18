@@ -15,6 +15,8 @@ import (
 )
 
 func (e *Engine) IndexFile(ctx context.Context, filePath, src string) error {
+	e.indexMu.Lock()
+	defer e.indexMu.Unlock()
 	return e.indexFileWith(filePath, src, e.bm25.AddDocument, e.chunkStore.PutAll)
 }
 
@@ -83,6 +85,9 @@ func (e *Engine) indexFileWith(
 }
 
 func (e *Engine) IndexDir(ctx context.Context, repoDir string, workers int) error {
+	e.indexMu.Lock()
+	defer e.indexMu.Unlock()
+
 	if workers <= 0 {
 		workers = runtime.NumCPU()
 	}
@@ -171,6 +176,9 @@ func (e *Engine) IndexDir(ctx context.Context, repoDir string, workers int) erro
 }
 
 func (e *Engine) FinalizeIndex() error {
+	e.indexMu.Lock()
+	defer e.indexMu.Unlock()
+
 	if e.bm25.IsEmpty() {
 		if err := e.warmupBM25(); err != nil {
 			return fmt.Errorf("warmup BM25: %w", err)
