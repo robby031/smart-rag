@@ -202,7 +202,7 @@ Pruning modes:
 
 ## Performance
 
-Benchmarked on the smart-rag repository itself (30 Go files, 3659 lines).
+Benchmarked smart-rag
 
 ```
 smart-rag performance matrix
