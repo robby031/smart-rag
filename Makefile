@@ -6,97 +6,101 @@ VERSION  ?= 0.3.5
 IMAGE    ?= smart-rag
 PRUNING  ?= soft
 
-.PHONY: all build bench install run run-full bench-run bench-run-full test clean \
-        docker-build docker-index docker-run docker-restart help
+.PHONY: build bench run run-full install test test-race vet bench-run \
+        docker-build docker-run docker-index docker-restart clean help
 
-all: build
+# ── Build ────────────────────────────────────────────────────────────
 
-build:           ; @echo "Build production binary → $(BINARY)"
+build:
 	go build -ldflags="-s -w -X main.version=$(VERSION)" -o $(BINARY) .
 
-build-all:       ; @echo "Build all packages"
-	go build -ldflags="-s -w" ./...
-
-bench:           ; @echo "Build benchmark binary → $(BENCH)"
+bench:
 	go build -ldflags="-s -w -X main.version=$(VERSION)" -o $(BENCH) ./cmd/bench
 
-run: build        ; @echo "Run MCP server (incremental index)"
+# ── Run ──────────────────────────────────────────────────────────────
+
+run: build
 	./$(BINARY) --repo "$(REPO)" --db "$(DB)" --pruning "$(PRUNING)"
 
-run-full: build   ; @echo "Run MCP server (full re-index)"
+run-full: build
 	./$(BINARY) --repo "$(REPO)" --db "$(DB)" --full --pruning "$(PRUNING)"
 
-bench-run: bench  ; @echo "Run benchmark (incremental)"
-	./$(BENCH) --repo "$(REPO)" --db "$(DB)" --pruning "$(PRUNING)"
+bench-run: bench
+	./$(BENCH) --repo "$(REPO)" --pruning "$(PRUNING)"
 
-bench-run-full: bench ; @echo "Run benchmark (full re-index)"
-	./$(BENCH) --repo "$(REPO)" --db "$(DB)" --full --pruning "$(PRUNING)"
+# ── Test ─────────────────────────────────────────────────────────────
 
-install: build
-	@echo "Install $(BINARY) to GOBIN..."
-	@go install -ldflags="-s -w -X main.version=$(VERSION)" .
-	@echo ""
-	@echo "Add to VS Code settings.json:"
-	@echo '{'
-	@echo '  "mcpServers": {'
-	@echo '    "rag-codebase": {'
-	@echo '      "command": "$(BINARY)",'
-	@echo '      "args": ["--repo", "/path/to/your/project"]'
-	@echo '    }'
-	@echo '  }'
-	@echo '}'
-
-test:            ; @echo "Run all tests"
+test:
 	go test ./...
 
-docker-build:    ; @echo "Build Docker image → $(IMAGE):latest"
+test-race:
+	go test -race ./...
+
+vet:
+	go vet ./...
+
+# ── Install ──────────────────────────────────────────────────────────
+
+install:
+	go install -ldflags="-s -w -X main.version=$(VERSION)" .
+
+# ── Docker ───────────────────────────────────────────────────────────
+
+docker-build:
 	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE):latest .
 
-docker-index:    ; @echo "Full re-index via Docker (REPO=$(REPO))"
-	REPO_DIR=$(REPO) docker compose run --rm index
-
-docker-run:      ; @echo "Run MCP server via Docker (REPO=$(REPO))"
+docker-run:
 	docker run -i --rm \
 	  -v "$(abspath $(REPO)):/repo:ro" \
 	  -v "smart-rag-data:/data" \
 	  $(IMAGE):latest
 
-docker-restart:  ; @echo "Rebuild image and re-index (REPO=$(REPO))"
-	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE):latest .
+docker-index:
 	REPO_DIR=$(REPO) docker compose run --rm index
 
-clean:           ; @echo "Remove build artifacts and database"
-	go clean -cache
-	rm -rf $(DB) $(BINARY) $(BENCH) bench
+docker-restart: docker-build
+	REPO_DIR=$(REPO) docker compose run --rm index
+
+# ── Clean ────────────────────────────────────────────────────────────
+
+clean:
+	rm -f $(BINARY) $(BENCH)
+	rm -rf $(DB)
+
+# ── Help ─────────────────────────────────────────────────────────────
 
 help:
-	@echo "smart-rag — Make targets"
-	@echo "========================"
+	@echo "Usage: make <target> [VAR=value]"
 	@echo ""
-	@echo "  build           Build production binary (rag-mcp)"
-	@echo "  bench           Build benchmark binary (rag-mcp-bench)"
-	@echo "  run             Incremental index + start MCP server"
-	@echo "  run-full        Full re-index + start MCP server"
-	@echo "  bench-run       Run benchmark (incremental)"
-	@echo "  bench-run-full  Run benchmark (full re-index)"
-	@echo "  install         Build + install to GOBIN"
-	@echo "  test            Run go test"
-	@echo "  clean           Remove artifacts and database"
+	@echo "Build & Run"
+	@echo "  build       Build MCP server binary"
+	@echo "  run         Start MCP server (incremental index)"
+	@echo "  run-full    Start MCP server (full re-index)"
+	@echo "  install     Install binary to GOPATH/bin"
 	@echo ""
-	@echo "Variables:"
-	@echo "  REPO=path       Source repository path (default: .)"
-	@echo "  DB=path         Database directory (default: ./rag-data)"
-	@echo "  VERSION=x.y.z   Binary version (default: 0.3.5)"
-	@echo "  IMAGE=name      Docker image name (default: smart-rag)"
+	@echo "Benchmark"
+	@echo "  bench       Build benchmark binary"
+	@echo "  bench-run   Run performance benchmark"
 	@echo ""
-	@echo "Examples:"
-	@echo "  make run REPO=/home/user/project DB=~/rag-data"
-	@echo "  make docker-build"
-	@echo "  make docker-index   REPO=/home/user/project"
-	@echo "  make docker-run     REPO=/home/user/project"
-	@echo "  make docker-restart REPO=/home/user/project"
+	@echo "Quality"
+	@echo "  test        Run tests"
+	@echo "  test-race   Run tests with race detector"
+	@echo "  vet         Run go vet"
 	@echo ""
-	@echo "MCP client config (Claude Code .mcp.json):"
-	@echo '  { "mcpServers": { "smart-rag": { "command": "docker",'
-	@echo '    "args": ["run","-i","--rm","-v","/your/repo:/repo:ro",'
-	@echo '    "-v","smart-rag-data:/data","smart-rag:latest"] } } }'
+	@echo "Docker"
+	@echo "  docker-build    Build Docker image"
+	@echo "  docker-run      Run MCP server in Docker"
+	@echo "  docker-index    Full re-index via Docker Compose"
+	@echo "  docker-restart  Rebuild image + re-index"
+	@echo ""
+	@echo "Variables"
+	@echo "  REPO=path       Repository to index   (default: .)"
+	@echo "  DB=path         Database directory     (default: ./rag-data)"
+	@echo "  PRUNING=mode    off, soft, or hard     (default: soft)"
+	@echo "  VERSION=x.y.z   Binary version         (default: 0.3.5)"
+	@echo "  IMAGE=name      Docker image name      (default: smart-rag)"
+	@echo ""
+	@echo "Examples"
+	@echo "  make run REPO=~/myproject"
+	@echo "  make bench-run REPO=~/myproject"
+	@echo "  make docker-run REPO=~/myproject"
