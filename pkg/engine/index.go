@@ -17,6 +17,7 @@ import (
 func (e *Engine) IndexFile(ctx context.Context, filePath, src string) error {
 	e.indexMu.Lock()
 	defer e.indexMu.Unlock()
+	e.indexDirty = true
 	return e.indexFileWith(filePath, src, e.bm25.AddDocument, e.chunkStore.PutAll)
 }
 
@@ -158,6 +159,7 @@ func (e *Engine) indexJSFileWith(
 func (e *Engine) IndexDir(ctx context.Context, repoDir string, workers int) error {
 	e.indexMu.Lock()
 	defer e.indexMu.Unlock()
+	e.indexDirty = true
 
 	if workers <= 0 {
 		workers = runtime.NumCPU()
@@ -250,7 +252,12 @@ func (e *Engine) FinalizeIndex() error {
 	e.indexMu.Lock()
 	defer e.indexMu.Unlock()
 
-	if e.bm25.IsEmpty() {
+	needsWarmup := e.bm25.IsEmpty()
+	if !e.indexDirty && !needsWarmup {
+		return nil
+	}
+
+	if needsWarmup {
 		if err := e.warmupBM25(); err != nil {
 			return fmt.Errorf("warmup BM25: %w", err)
 		}
@@ -266,6 +273,7 @@ func (e *Engine) FinalizeIndex() error {
 	if _, err := e.applyHardPruning(); err != nil {
 		return fmt.Errorf("hard prune chunks: %w", err)
 	}
+	e.indexDirty = false
 	return e.importGraph.Flush()
 }
 

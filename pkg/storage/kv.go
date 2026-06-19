@@ -85,6 +85,52 @@ func (s *Store) Delete(key []byte) error {
 	})
 }
 
+func (s *Store) BatchDelete(keys [][]byte) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("rag"))
+		for _, k := range keys {
+			if err := b.Delete(k); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *Store) FlushBatch(deleteKeys [][]byte, deletePrefixes [][]byte, puts []KVPair) error {
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("rag"))
+
+		for _, k := range deleteKeys {
+			if err := b.Delete(k); err != nil {
+				return err
+			}
+		}
+
+		c := b.Cursor()
+		for _, prefix := range deletePrefixes {
+			for k, _ := c.Seek(prefix); k != nil && len(k) >= len(prefix); k, _ = c.Next() {
+				if string(k[:len(prefix)]) != string(prefix) {
+					break
+				}
+				if err := b.Delete(k); err != nil {
+					return err
+				}
+			}
+		}
+
+		for _, p := range puts {
+			if err := b.Put(p.Key, p.Value); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 func (s *Store) Sync() error {
 	return s.db.Sync()
 }
@@ -119,6 +165,27 @@ func (s *Store) HasPrefix(prefix []byte) (bool, error) {
 		return nil
 	})
 	return found, err
+}
+
+func (s *Store) DeleteWithPrefixes(prefixes [][]byte) error {
+	if len(prefixes) == 0 {
+		return nil
+	}
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("rag"))
+		c := b.Cursor()
+		for _, prefix := range prefixes {
+			for k, _ := c.Seek(prefix); k != nil && len(k) >= len(prefix); k, _ = c.Next() {
+				if string(k[:len(prefix)]) != string(prefix) {
+					break
+				}
+				if err := b.Delete(k); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
 }
 
 func (s *Store) DeleteWithPrefix(prefix []byte) error {

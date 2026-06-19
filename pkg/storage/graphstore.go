@@ -183,17 +183,43 @@ func (gs *GraphStore) SaveImportBatch(pairs [][2]string) error {
 }
 
 func (gs *GraphStore) DeleteNodesByIDs(ids []string) error {
-	for _, id := range ids {
-		if err := gs.kv.Delete([]byte(graphNodePrefix + id)); err != nil {
-			return fmt.Errorf("delete node %s: %w", id, err)
-		}
-	}
-	return nil
+	return gs.kv.BatchDelete(idsToKeys(ids, graphNodePrefix))
 }
 
 func (gs *GraphStore) DeleteEdgesByCaller(callerID string) error {
 	prefix := graphEdgePrefix + callerID + "\x00"
 	return gs.kv.DeleteWithPrefix([]byte(prefix))
+}
+
+func (gs *GraphStore) DeleteEdgesByCallers(callerIDs []string) error {
+	prefixes := make([][]byte, len(callerIDs))
+	for i, id := range callerIDs {
+		prefixes[i] = []byte(graphEdgePrefix + id + "\x00")
+	}
+	return gs.kv.DeleteWithPrefixes(prefixes)
+}
+
+func MarshalNodeKV(node GraphNode) KVPair {
+	data, _ := json.Marshal(node)
+	return KVPair{Key: []byte(graphNodePrefix + node.ID), Value: data}
+}
+
+func MarshalEdgeKV(edge GraphEdge) KVPair {
+	data, _ := json.Marshal(edge)
+	key := fmt.Sprintf("%s%s\x00%s", graphEdgePrefix, edge.Caller, edge.Callee)
+	return KVPair{Key: []byte(key), Value: data}
+}
+
+func (gs *GraphStore) FlushBatch(deleteKeys [][]byte, deletePrefixes [][]byte, puts []KVPair) error {
+	return gs.kv.FlushBatch(deleteKeys, deletePrefixes, puts)
+}
+
+func idsToKeys(ids []string, prefix string) [][]byte {
+	keys := make([][]byte, len(ids))
+	for i, id := range ids {
+		keys[i] = []byte(prefix + id)
+	}
+	return keys
 }
 
 func (gs *GraphStore) ClearGraph() error {

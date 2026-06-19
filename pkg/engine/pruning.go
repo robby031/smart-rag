@@ -99,9 +99,14 @@ func (e *Engine) refreshChunkReachability() error {
 	}
 
 	reachable := e.reachableNodeSet(entrypointRoots...)
-	updated := make([]storage.ChunkMeta, 0, len(chunks))
+	var dirty []storage.ChunkMeta
 	for _, chunk := range chunks {
 		meta := *chunk
+		oldReach := meta.Reachability
+		oldWeight := meta.ContextWeight
+		oldRole := meta.SemanticRole
+		oldFold := meta.FoldReason
+
 		meta.Reachability = ReachabilityUnknown
 		meta.ContextWeight = baseContextWeight(&meta)
 
@@ -121,10 +126,16 @@ func (e *Engine) refreshChunkReachability() error {
 		}
 		applySemanticFolding(&meta)
 
-		updated = append(updated, meta)
+		if meta.Reachability != oldReach || meta.ContextWeight != oldWeight ||
+			meta.SemanticRole != oldRole || meta.FoldReason != oldFold {
+			dirty = append(dirty, meta)
+		}
 	}
 
-	return e.chunkStore.PutAll(updated)
+	if len(dirty) == 0 {
+		return nil
+	}
+	return e.chunkStore.PutAll(dirty)
 }
 
 func (e *Engine) applyHardPruning() (int, error) {

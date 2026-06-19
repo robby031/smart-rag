@@ -11,46 +11,42 @@ func (cg *CallGraph) Flush() error {
 	if cg.store == nil {
 		return nil
 	}
-	if len(cg.deletedNodeIDs) > 0 {
-		if err := cg.store.DeleteNodesByIDs(cg.deletedNodeIDs); err != nil {
-			return err
-		}
-		cg.deletedNodeIDs = nil
+	hasDirty := len(cg.deletedNodeIDs) > 0 || len(cg.deletedCallerIDs) > 0 ||
+		len(cg.dirtyNodes) > 0 || len(cg.dirtyCallers) > 0
+	if !hasDirty {
+		return nil
 	}
+
+	var deleteNodeKeys [][]byte
+	for _, id := range cg.deletedNodeIDs {
+		deleteNodeKeys = append(deleteNodeKeys, []byte("graph:node:"+id))
+	}
+
+	var deleteEdgePrefixes [][]byte
 	for _, callerID := range cg.deletedCallerIDs {
-		if err := cg.store.DeleteEdgesByCaller(callerID); err != nil {
-			return err
+		deleteEdgePrefixes = append(deleteEdgePrefixes, []byte("graph:edge:"+callerID+"\x00"))
+	}
+
+	var savePairs []storage.KVPair
+	for id := range cg.dirtyNodes {
+		if n, ok := cg.Nodes[id]; ok {
+			savePairs = append(savePairs, storage.MarshalNodeKV(storageNode(n)))
 		}
 	}
+	for caller := range cg.dirtyCallers {
+		for callee := range cg.OutEdges[caller] {
+			savePairs = append(savePairs, storage.MarshalEdgeKV(storage.GraphEdge{Caller: caller, Callee: callee}))
+		}
+	}
+
+	if err := cg.store.FlushBatch(deleteNodeKeys, deleteEdgePrefixes, savePairs); err != nil {
+		return err
+	}
+
+	cg.deletedNodeIDs = nil
 	cg.deletedCallerIDs = nil
-	if len(cg.dirtyNodes) > 0 {
-		nodes := make([]storage.GraphNode, 0, len(cg.dirtyNodes))
-		for id := range cg.dirtyNodes {
-			if n, ok := cg.Nodes[id]; ok {
-				nodes = append(nodes, storageNode(n))
-			}
-		}
-		if err := cg.store.SaveNodeBatch(nodes); err != nil {
-			return err
-		}
-		cg.dirtyNodes = make(map[string]bool)
-	}
-	if len(cg.dirtyCallers) > 0 {
-		var edgeCount int
-		for caller := range cg.dirtyCallers {
-			edgeCount += len(cg.OutEdges[caller])
-		}
-		edges := make([]storage.GraphEdge, 0, edgeCount)
-		for caller := range cg.dirtyCallers {
-			for callee := range cg.OutEdges[caller] {
-				edges = append(edges, storage.GraphEdge{Caller: caller, Callee: callee})
-			}
-		}
-		if err := cg.store.SaveEdgeBatch(edges); err != nil {
-			return err
-		}
-		cg.dirtyCallers = make(map[string]bool)
-	}
+	cg.dirtyNodes = make(map[string]bool)
+	cg.dirtyCallers = make(map[string]bool)
 	return nil
 }
 
