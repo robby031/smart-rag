@@ -46,6 +46,7 @@ func (e *Engine) RecordIndexSummary(summary IndexSummary) {
 }
 
 func (e *Engine) Status() Status {
+	e.indexMu.RLock()
 	graphStats := map[string]int{"nodes": 0, "edges": 0}
 	if e.callGraph != nil {
 		graphStats = e.callGraph.Stats()
@@ -56,6 +57,7 @@ func (e *Engine) Status() Status {
 		bm25Empty = e.bm25.IsEmpty()
 		indexedChunks = len(e.bm25.DocIDs)
 	}
+	e.indexMu.RUnlock()
 
 	e.statusMu.RLock()
 	runtimeInfo := e.runtimeInfo
