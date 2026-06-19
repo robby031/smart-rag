@@ -2,7 +2,7 @@ BINARY   ?= rag-mcp
 BENCH    ?= rag-mcp-bench
 DB       ?= ./rag-data
 REPO     ?= .
-VERSION  ?= 0.3.5
+VERSION  ?= 0.4.5
 IMAGE    ?= smart-rag
 PRUNING  ?= soft
 
@@ -97,7 +97,7 @@ help:
 	@echo "  REPO=path       Repository to index   (default: .)"
 	@echo "  DB=path         Database directory     (default: ./rag-data)"
 	@echo "  PRUNING=mode    off, soft, or hard     (default: soft)"
-	@echo "  VERSION=x.y.z   Binary version         (default: 0.3.5)"
+	@echo "  VERSION=x.y.z   Binary version         (default: 0.4.5)"
 	@echo "  IMAGE=name      Docker image name      (default: smart-rag)"
 	@echo ""
 	@echo "Examples"

@@ -9,7 +9,7 @@ import (
 
 func TestFormatStatus(t *testing.T) {
 	out := formatStatus(engine.Status{
-		Version:          "0.3.5",
+		Version:          "0.4.5",
 		RepoDir:          "/repo",
 		DBDir:            "/db",
 		IndexedChunks:    12,
@@ -22,7 +22,7 @@ func TestFormatStatus(t *testing.T) {
 
 	for _, want := range []string{
 		"smart-rag status",
-		"Version: 0.3.5",
+		"Version: 0.4.5",
 		"Indexed chunks: 12",
 		"Graph nodes: 3",
 		"Graph edges: 4",

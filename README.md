@@ -190,7 +190,7 @@ make clean        # Remove artifacts
 - `REPO=path` — source repository (default: `.`)
 - `DB=path` — database directory (default: `./rag-data`)
 - `PRUNING=off|soft|hard` — index pruning mode (default: `soft`)
-- `VERSION=x.y.z` — binary version (default: `0.3.5`)
+- `VERSION=x.y.z` — binary version (default: `0.4.5`)
 
 `--pruning` maps to the index pruning setting `index.pruning.mode`.
 
@@ -207,7 +207,7 @@ Benchmarked smart-rag
 ```
 smart-rag performance benchmark
 ═══════════════════════════════════════════════════════════════
-  Version      : 0.3.5
+  Version      : 0.4.5
   Repository   : /Users/bagusdwiharianto/Development/ai/smart-rag
   Source files : 51  (9154 lines)
   Pruning      : soft
