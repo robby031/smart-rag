@@ -7,7 +7,10 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+
+	"github.com/robby031/smart-rag/pkg/indexer"
 )
 
 type MatchResult struct {
@@ -116,10 +119,11 @@ func (s *ASTSearch) FindReferences(filePath, src, symbol string) ([]MatchResult,
 
 	var results []MatchResult
 
+	symbolLower := strings.ToLower(symbol)
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.Ident:
-			if node.Name == symbol {
+			if node.Name == symbol || matchesCamelCase(node.Name, symbolLower) {
 				pos := fset.Position(node.Pos())
 				snippet := extractSnippet(src, pos.Line)
 				results = append(results, MatchResult{
@@ -127,7 +131,7 @@ func (s *ASTSearch) FindReferences(filePath, src, symbol string) ([]MatchResult,
 					Line:     pos.Line,
 					Snippet:  snippet,
 					NodeType: "reference",
-					Name:     symbol,
+					Name:     node.Name,
 				})
 			}
 		}
@@ -200,6 +204,11 @@ func receiverStr(expr ast.Expr) string {
 	default:
 		return "?"
 	}
+}
+
+func matchesCamelCase(identName, queryLower string) bool {
+	parts := indexer.SplitIdentifier(identName)
+	return slices.Contains(parts, queryLower)
 }
 
 func extractSnippet(src string, line int) string {
