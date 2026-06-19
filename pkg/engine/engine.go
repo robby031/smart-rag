@@ -105,6 +105,9 @@ func (e *Engine) Query(ctx context.Context, q Query) (*Response, error) {
 	case QueryVariableSearch:
 		resp.Type = "variable_search"
 		return e.handleVariableSearch(q)
+	case QueryDynamicFlow:
+		resp.Type = "dynamic_flow"
+		return e.handleDynamicFlow(q)
 	default:
 		return nil, fmt.Errorf("unknown query type: %v", q.Type)
 	}
