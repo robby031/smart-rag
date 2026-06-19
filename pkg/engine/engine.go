@@ -23,6 +23,7 @@ type Engine struct {
 	importGraph      *graph.ImportGraph
 	chunkStore       *storage.ChunkStore
 	pruningMode      PruningMode
+	indexDirty       bool
 	indexMu          sync.RWMutex
 	statusMu         sync.RWMutex
 	runtimeInfo      RuntimeInfo

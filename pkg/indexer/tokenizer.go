@@ -212,7 +212,7 @@ func tokenizeCode(code string) []string {
 	return tokens
 }
 
-func splitCamel(s string) []string {
+func SplitIdentifier(s string) []string {
 	return splitIdentifier(s)
 }
 

@@ -6,10 +6,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/robby031/smart-rag/pkg/engine"
@@ -22,16 +24,29 @@ var version = "dev"
 
 func main() {
 	repoDir := flag.String("repo", ".", "Path to the code repository")
-	dbDir := flag.String("db", "./rag-data", "Path to the RAG database")
-	fullReindex := flag.Bool("full", false, "Force full re-index")
+	dbDir := flag.String("db", "", "Path to the RAG database (default: temp dir)")
 	pruningMode := flag.String("pruning", string(engine.PruningModeSoft), "Index pruning mode: off, soft, or hard")
 	flag.Parse()
 
 	absRepo, _ := filepath.Abs(*repoDir)
-	absDB, _ := filepath.Abs(*dbDir)
-	os.MkdirAll(absDB, 0755)
 
-	goFiles, totalLines := goStats(absRepo)
+	absDB := *dbDir
+	if absDB == "" {
+		tmp, err := os.MkdirTemp("", "rag-bench-*")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer os.RemoveAll(tmp)
+		absDB = tmp
+	} else {
+		absDB, _ = filepath.Abs(absDB)
+		os.MkdirAll(absDB, 0755)
+	}
+
+	totalFiles, totalLines := repoStats(absRepo)
+	if totalFiles == 0 {
+		log.Fatalf("No indexable files found in %s", absRepo)
+	}
 
 	kvStore, err := storage.OpenStore(filepath.Join(absDB, "kv"))
 	if err != nil {
@@ -57,185 +72,273 @@ func main() {
 		log.Fatal(err)
 	}
 
-	var (
-		indexedCount int
-		peakHeapMB   float64
-	)
-
+	// ── Phase 1: Full index ─────────────────────────────────────────────
 	runtime.GC()
 	var memBefore runtime.MemStats
 	runtime.ReadMemStats(&memBefore)
 
-	start := time.Now()
-
-	if *fullReindex {
-		fmt.Println("Full re-indexing:", absRepo)
-		if err := eng.IndexDir(context.Background(), absRepo, 0); err != nil {
-			log.Fatal(err)
-		}
-
-		runtime.GC()
-		runtime.GC()
-		var memPeak runtime.MemStats
-		runtime.ReadMemStats(&memPeak)
-		if memPeak.HeapInuse > memBefore.HeapInuse {
-			peakHeapMB = float64(memPeak.HeapInuse-memBefore.HeapInuse) / 1024 / 1024
-		}
-		if err := eng.FinalizeIndex(); err != nil {
-			log.Fatal(err)
-		}
-		indexedCount = goFiles
-	} else {
-		syncer := indexer.NewSyncer(eng, indexStore, absRepo)
-		indexed, deleted, err := syncer.Sync(context.Background())
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Printf("Incremental: %d indexed, %d removed\n", indexed, deleted)
-		indexedCount = indexed
+	fullStart := time.Now()
+	if err := eng.IndexDir(context.Background(), absRepo, 0); err != nil {
+		log.Fatal(err)
 	}
 
-	elapsed := time.Since(start)
-	s := eng.Stats()
+	runtime.GC()
+	runtime.GC()
+	var memAfter runtime.MemStats
+	runtime.ReadMemStats(&memAfter)
 
-	var projected time.Duration
-	if indexedCount > 0 {
-		projected = time.Duration(float64(elapsed) * 1000.0 / float64(indexedCount))
+	if err := eng.FinalizeIndex(); err != nil {
+		log.Fatal(err)
+	}
+	fullElapsed := time.Since(fullStart)
+
+	var heapDeltaMB float64
+	if memAfter.HeapInuse > memBefore.HeapInuse {
+		heapDeltaMB = float64(memAfter.HeapInuse-memBefore.HeapInuse) / 1024 / 1024
 	}
 
+	stats := eng.Stats()
+	nChunks := stats["chunks"]
+	nGraphNodes := stats["graph_nodes"]
+	nGraphEdges := stats["graph_edges"]
+
+	// ── Phase 2: Incremental re-index (single file) ─────────────────────
+	paths, _ := searcher.WalkFiles(absRepo, 0)
 	var incrElapsed time.Duration
-	if *fullReindex {
-		paths, _ := searcher.WalkFiles(absRepo, 0)
-		if len(paths) > 0 {
-			src, _ := os.ReadFile(paths[0])
-			relPath, _ := filepath.Rel(absRepo, paths[0])
-			t := time.Now()
-			_ = eng.IndexFile(context.Background(), relPath, string(src))
-			_ = eng.FinalizeIndex()
-			incrElapsed = time.Since(t)
-		}
+	if len(paths) > 0 {
+		mid := paths[len(paths)/2]
+		src, _ := os.ReadFile(mid)
+		relPath, _ := filepath.Rel(absRepo, mid)
+		t := time.Now()
+		_ = eng.IndexFile(context.Background(), relPath, string(src))
+		_ = eng.FinalizeIndex()
+		incrElapsed = time.Since(t)
 	}
+
+	// ── Phase 3: Incremental sync (no changes — measures overhead) ─────
+	// First sync populates the index store hashes so the second one is a true no-op.
+	syncer := indexer.NewSyncer(eng, indexStore, absRepo)
+	_, _, _ = syncer.Sync(context.Background())
+	syncStart := time.Now()
+	_, _, _ = syncer.Sync(context.Background())
+	noopSyncElapsed := time.Since(syncStart)
+
+	// ── Phase 4: Harvest real symbols from the indexed graph ────────────
+	symbols := harvestSymbols(eng, chunkStore)
 
 	ctx := context.Background()
-	nChunks := s["chunks"]
 
-	searchLat := benchQueries(func(term string) {
-		eng.Query(ctx, engine.Query{Type: engine.QuerySearch, Text: term, TopK: 10}) //nolint
-	}, []string{"Parse", "Index", "node", "chunk", "graph", "search", "token", "file", "error", "engine"}, 20)
+	// ── Phase 5: Query benchmarks ───────────────────────────────────────
+	searchResult := benchOp("search", symbols.searchQueries, 30, func(q string) {
+		eng.Query(ctx, engine.Query{Type: engine.QuerySearch, Text: q, TopK: 10})
+	})
+	searchFilteredResult := benchOp("search+filter", symbols.searchQueries[:min(5, len(symbols.searchQueries))], 30, func(q string) {
+		eng.Query(ctx, engine.Query{Type: engine.QuerySearch, Text: q, TopK: 10, Language: "go"})
+	})
+	defResult := benchOp("find_definition", symbols.defQueries, 30, func(q string) {
+		eng.Query(ctx, engine.Query{Type: engine.QueryDefinition, Text: q})
+	})
+	refResult := benchOp("find_references", symbols.refQueries, 30, func(q string) {
+		eng.Query(ctx, engine.Query{Type: engine.QueryReferences, Text: q})
+	})
+	callerResult := benchOp("get_callers", symbols.callerQueries, 30, func(q string) {
+		eng.Query(ctx, engine.Query{Type: engine.QueryCallers, Text: q})
+	})
+	calleeResult := benchOp("get_callees", symbols.calleeQueries, 30, func(q string) {
+		eng.Query(ctx, engine.Query{Type: engine.QueryCallees, Text: q})
+	})
+	impactResult := benchOp("impact_analysis", symbols.impactQueries, 20, func(q string) {
+		eng.Query(ctx, engine.Query{Type: engine.QueryImpact, Text: q, MaxDepth: 3})
+	})
+	contextResult := benchOp("get_context_pack", symbols.contextQueries, 20, func(q string) {
+		eng.Query(ctx, engine.Query{Type: engine.QueryContextPack, Text: q})
+	})
+	snippetResult := benchOp("read_snippet", symbols.snippetQueries, 30, func(q string) {
+		eng.Query(ctx, engine.Query{Type: engine.QueryReadSnippet, Text: q})
+	})
 
-	defLat := benchQueries(func(term string) {
-		eng.Query(ctx, engine.Query{Type: engine.QueryDefinition, Text: term}) //nolint
-	}, []string{"ParseFile", "IndexFile", "AddNode", "AddEdge", "PutAll", "Flush", "BatchPut", "WalkFiles"}, 20)
-
-	callerLat := benchQueries(func(term string) {
-		eng.Query(ctx, engine.Query{Type: engine.QueryCallers, Text: term}) //nolint
-	}, []string{"ParseFile", "IndexFile", "AddNode", "Flush"}, 20)
-
+	// ── Phase 6: Binary size ────────────────────────────────────────────
 	var binarySizeMB float64
 	if info, err := os.Stat(os.Args[0]); err == nil {
 		binarySizeMB = float64(info.Size()) / 1024 / 1024
 	}
 
+	// ── Output ──────────────────────────────────────────────────────────
 	fmt.Println()
-	fmt.Println("smart-rag performance matrix")
-	fmt.Println("================================")
-	fmt.Printf("  Version       : %s\n", version)
-	fmt.Printf("  Repository    : %s\n", absRepo)
-	fmt.Printf("  Go files      : %d (%d lines)\n", goFiles, totalLines)
-	fmt.Printf("  Chunks        : %d\n", nChunks)
-	fmt.Printf("  Graph nodes   : %d\n", s["graph_nodes"])
-	fmt.Printf("  Graph edges   : %d\n", s["graph_edges"])
-	fmt.Printf("  Index time    : %s\n", elapsed.Round(time.Millisecond))
-	fmt.Println("--------------------------------")
-	fmt.Println("  Metric                      Target        Actual")
+	fmt.Println("smart-rag performance benchmark")
+	fmt.Println("═══════════════════════════════════════════════════════════════")
+	fmt.Printf("  Version      : %s\n", version)
+	fmt.Printf("  Repository   : %s\n", absRepo)
+	fmt.Printf("  Source files : %d  (%d lines)\n", totalFiles, totalLines)
+	fmt.Printf("  Pruning      : %s\n", *pruningMode)
+	fmt.Println()
 
-	status := statusIcon(elapsed, 5*time.Second, 8*time.Second)
-	fmt.Printf("  Cold index (%4d files)  %s  < 5-8s       %s\n", goFiles, status, elapsed.Round(time.Millisecond))
+	fmt.Println("  Index Stats")
+	fmt.Println("  ───────────────────────────────────────────────────────────")
+	fmt.Printf("  Chunks       : %d\n", nChunks)
+	fmt.Printf("  Graph nodes  : %d\n", nGraphNodes)
+	fmt.Printf("  Graph edges  : %d\n", nGraphEdges)
+	fmt.Println()
 
-	projStatus := statusIcon(projected, 5*time.Second, 8*time.Second)
-	if indexedCount > 0 {
-		fmt.Printf("  Projected   (1000 files) %s  < 5-8s       ~%s  [from %d files]\n", projStatus, projected.Round(time.Millisecond), indexedCount)
-	} else {
-		fmt.Printf("  Projected   (1000 files)     < 5-8s       n/a\n")
+	fmt.Println("  Indexing Performance")
+	fmt.Println("  ───────────────────────────────────────────────────────────")
+	fmt.Printf("  Full index         : %-12s  (%d files)\n", fullElapsed.Round(time.Millisecond), totalFiles)
+	if totalFiles > 0 {
+		fmt.Printf("  Per file (avg)     : %s\n", (fullElapsed / time.Duration(totalFiles)).Round(time.Microsecond))
 	}
-
-	if incrElapsed > 0 {
-		incrStatus := statusIcon(incrElapsed, 1*time.Second, 2*time.Second)
-		fmt.Printf("  Incremental (    1 file) %s  < 1-2s       %s\n", incrStatus, incrElapsed.Round(time.Millisecond))
-	} else {
-		fmt.Printf("  Incremental (    1 file)     < 1-2s       (run --full to measure)\n")
+	fmt.Printf("  Incremental 1-file : %s\n", incrElapsed.Round(time.Millisecond))
+	fmt.Printf("  No-op sync         : %s\n", noopSyncElapsed.Round(time.Millisecond))
+	if heapDeltaMB > 0 {
+		fmt.Printf("  Heap delta         : %.1f MB\n", heapDeltaMB)
 	}
-
-	smed, sp95 := medianAndP95(searchLat)
-	sStatus := statusIcon(smed, 50*time.Millisecond, 80*time.Millisecond)
-	fmt.Printf("  Query search             %s  < 50-80ms    median %-8s  p95 %s  [%d chunks]\n",
-		sStatus, fmtDur(smed), fmtDur(sp95), nChunks)
-
-	dmed, dp95 := medianAndP95(defLat)
-	dStatus := statusIcon(dmed, 50*time.Millisecond, 80*time.Millisecond)
-	fmt.Printf("  Query find-def           %s  < 50-80ms    median %-8s  p95 %s  [%d chunks]\n",
-		dStatus, fmtDur(dmed), fmtDur(dp95), nChunks)
-
-	cmed, cp95 := medianAndP95(callerLat)
-	cStatus := statusIcon(cmed, 50*time.Millisecond, 80*time.Millisecond)
-	fmt.Printf("  Query callers            %s  < 50-80ms    median %-8s  p95 %s  [%d chunks]\n",
-		cStatus, fmtDur(cmed), fmtDur(cp95), nChunks)
-
 	if binarySizeMB > 0 {
-		bStatus := statusIcon(time.Duration(binarySizeMB*1000)*time.Millisecond, 15000*time.Millisecond, 20000*time.Millisecond)
-		fmt.Printf("  Binary size              %s  < 15-20 MB   %.1f MB\n", bStatus, binarySizeMB)
+		fmt.Printf("  Binary size        : %.1f MB\n", binarySizeMB)
 	}
+	fmt.Println()
 
-	if peakHeapMB > 0 {
-		ramStatus := statusIcon(time.Duration(peakHeapMB*1000)*time.Millisecond, 80000*time.Millisecond, 120000*time.Millisecond)
-		fmt.Printf("  RAM during index         %s  < 80-120 MB  %.1f MB heap delta\n", ramStatus, peakHeapMB)
-	} else {
-		fmt.Printf("  RAM during index             < 80-120 MB  (run --full to measure)\n")
-	}
-
-	if nChunks > 0 && smed > 0 {
-		proj100k := time.Duration(float64(smed) * 100_000 / float64(nChunks))
-		p100kStatus := statusIcon(proj100k, 40*time.Millisecond, 100*time.Millisecond)
-		fmt.Printf("  Query 100k docs          %s  ~20-40ms     ~%s projected  [linear from %d chunks]\n",
-			p100kStatus, fmtDur(proj100k), nChunks)
-	}
-
+	fmt.Println("  Query Latency")
+	fmt.Println("  ───────────────────────────────────────────────────────────")
+	fmt.Println("  Operation            Queries   Median     P95        P99        Min        Max")
+	printBenchRow(searchResult)
+	printBenchRow(searchFilteredResult)
+	printBenchRow(defResult)
+	printBenchRow(refResult)
+	printBenchRow(callerResult)
+	printBenchRow(calleeResult)
+	printBenchRow(impactResult)
+	printBenchRow(contextResult)
+	printBenchRow(snippetResult)
 	fmt.Println()
 }
 
-func benchQueries(fn func(string), terms []string, repsPerTerm int) []time.Duration {
-	out := make([]time.Duration, 0, len(terms)*repsPerTerm)
-	for _, term := range terms {
-		for range repsPerTerm {
-			t := time.Now()
-			fn(term)
-			out = append(out, time.Since(t))
+type symbolSet struct {
+	searchQueries  []string
+	defQueries     []string
+	refQueries     []string
+	callerQueries  []string
+	calleeQueries  []string
+	impactQueries  []string
+	contextQueries []string
+	snippetQueries []string
+}
+
+func harvestSymbols(eng *engine.Engine, cs *storage.ChunkStore) symbolSet {
+	var s symbolSet
+
+	chunks, err := cs.GetAll()
+	if err != nil || len(chunks) == 0 {
+		s.searchQueries = []string{"parse", "index", "search"}
+		return s
+	}
+
+	funcNames := make(map[string]bool)
+	typeNames := make(map[string]bool)
+	var chunkIDs []string
+	var snippetLocs []string
+
+	for _, ch := range chunks {
+		if ch.SymbolName != "" {
+			if strings.HasPrefix(ch.Signature, "func ") || ch.ChunkType == "4" {
+				funcNames[ch.SymbolName] = true
+			} else {
+				typeNames[ch.SymbolName] = true
+			}
+		}
+		chunkIDs = append(chunkIDs, ch.ID)
+		if ch.StartLine > 0 {
+			snippetLocs = append(snippetLocs, fmt.Sprintf("%s:%d-%d", ch.FilePath, ch.StartLine, ch.EndLine))
 		}
 	}
-	return out
+
+	stats := eng.Stats()
+	graphNodes := stats["graph_nodes"]
+
+	funcs := sortedKeys(funcNames)
+	types := sortedKeys(typeNames)
+
+	s.searchQueries = pickDistributed(append(funcs, types...), 15)
+
+	s.defQueries = pickDistributed(append(types, funcs...), 10)
+
+	s.refQueries = pickDistributed(append(funcs, types...), 8)
+
+	if graphNodes > 0 {
+		s.callerQueries = pickDistributed(funcs, 8)
+		s.calleeQueries = pickDistributed(funcs, 8)
+		s.impactQueries = pickDistributed(funcs, 6)
+	} else {
+		s.callerQueries = pickDistributed(funcs, 3)
+		s.calleeQueries = pickDistributed(funcs, 3)
+		s.impactQueries = pickDistributed(funcs, 2)
+	}
+
+	s.contextQueries = pickDistributed(chunkIDs, 8)
+	s.snippetQueries = pickDistributed(snippetLocs, 10)
+
+	return s
 }
 
-func medianAndP95(d []time.Duration) (median, p95 time.Duration) {
-	if len(d) == 0 {
-		return 0, 0
-	}
-	cp := make([]time.Duration, len(d))
-	copy(cp, d)
-	sort.Slice(cp, func(i, j int) bool { return cp[i] < cp[j] })
-	median = cp[len(cp)/2]
-	p95 = cp[int(float64(len(cp))*0.95)]
-	return
+type benchResult struct {
+	name       string
+	n          int
+	median     time.Duration
+	p95        time.Duration
+	p99        time.Duration
+	minLat     time.Duration
+	maxLat     time.Duration
 }
 
-func statusIcon(actual, warn, crit time.Duration) string {
-	switch {
-	case actual <= warn:
-		return "ok"
-	case actual <= crit:
-		return "warn"
-	default:
-		return "crit"
+func benchOp(name string, queries []string, repsPerQuery int, fn func(string)) benchResult {
+	if len(queries) == 0 {
+		return benchResult{name: name}
 	}
+
+	// warmup
+	fn(queries[0])
+
+	var lats []time.Duration
+	for _, q := range queries {
+		for range repsPerQuery {
+			t := time.Now()
+			fn(q)
+			lats = append(lats, time.Since(t))
+		}
+	}
+
+	sort.Slice(lats, func(i, j int) bool { return lats[i] < lats[j] })
+	n := len(lats)
+	return benchResult{
+		name:   name,
+		n:      n,
+		median: lats[n/2],
+		p95:    lats[percentileIdx(n, 0.95)],
+		p99:    lats[percentileIdx(n, 0.99)],
+		minLat: lats[0],
+		maxLat: lats[n-1],
+	}
+}
+
+func printBenchRow(r benchResult) {
+	if r.n == 0 {
+		fmt.Printf("  %-22s  %5s   %-10s %-10s %-10s %-10s %s\n",
+			r.name, "-", "-", "-", "-", "-", "-")
+		return
+	}
+	fmt.Printf("  %-22s  %5d   %-10s %-10s %-10s %-10s %s\n",
+		r.name, r.n,
+		fmtDur(r.median), fmtDur(r.p95), fmtDur(r.p99),
+		fmtDur(r.minLat), fmtDur(r.maxLat))
+}
+
+func percentileIdx(n int, p float64) int {
+	idx := int(math.Ceil(float64(n)*p)) - 1
+	if idx < 0 {
+		return 0
+	}
+	if idx >= n {
+		return n - 1
+	}
+	return idx
 }
 
 func fmtDur(d time.Duration) string {
@@ -248,7 +351,7 @@ func fmtDur(d time.Duration) string {
 	return d.Round(time.Millisecond).String()
 }
 
-func goStats(dir string) (files, lines int) {
+func repoStats(dir string) (files, lines int) {
 	paths, _ := searcher.WalkFiles(dir, 0)
 	for _, p := range paths {
 		files++
@@ -259,4 +362,32 @@ func goStats(dir string) (files, lines int) {
 		lines += bytes.Count(src, []byte{'\n'})
 	}
 	return
+}
+
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func pickDistributed(items []string, n int) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	if len(items) <= n {
+		return items
+	}
+	step := float64(len(items)) / float64(n)
+	out := make([]string, 0, n)
+	for i := range n {
+		idx := int(float64(i) * step)
+		if idx >= len(items) {
+			idx = len(items) - 1
+		}
+		out = append(out, items[idx])
+	}
+	return out
 }

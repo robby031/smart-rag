@@ -37,6 +37,10 @@ func (s *Syncer) Sync(ctx context.Context) (int, int, error) {
 		return 0, 0, fmt.Errorf("detect changes: %w", err)
 	}
 
+	if len(changed) == 0 && len(deleted) == 0 {
+		return 0, 0, nil
+	}
+
 	indexed := 0
 	for _, filePath := range changed {
 		absPath := filepath.Join(s.repoDir, filePath)
