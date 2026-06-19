@@ -16,6 +16,10 @@ const (
 	QueryImpact
 	QueryContextPack
 	QueryReadSnippet
+	QueryTraceVariable
+	QueryFunctionFlow
+	QueryTypeProvenance
+	QueryVariableSearch
 )
 
 type Query struct {

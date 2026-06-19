@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -21,17 +22,19 @@ const (
 )
 
 type Chunk struct {
-	ID            string    `json:"id"`
-	FilePath      string    `json:"file_path"`
-	ChunkType     ChunkType `json:"chunk_type"`
-	StartLine     int       `json:"start_line"`
-	EndLine       int       `json:"end_line"`
-	Content       string    `json:"content"`
-	SymbolName    string    `json:"symbol_name,omitempty"`
-	Signature     string    `json:"signature,omitempty"`
-	Package       string    `json:"package"`
-	Imports       []string  `json:"imports,omitempty"`
-	TestedSymbols []string  `json:"tested_symbols,omitempty"`
+	ID            string        `json:"id"`
+	FilePath      string        `json:"file_path"`
+	ChunkType     ChunkType     `json:"chunk_type"`
+	StartLine     int           `json:"start_line"`
+	EndLine       int           `json:"end_line"`
+	Content       string        `json:"content"`
+	SymbolName    string        `json:"symbol_name,omitempty"`
+	Signature     string        `json:"signature,omitempty"`
+	Package       string        `json:"package"`
+	Imports       []string      `json:"imports,omitempty"`
+	TestedSymbols []string      `json:"tested_symbols,omitempty"`
+	Variables     []VariableRef `json:"variables,omitempty"`
+	Types         []string      `json:"types,omitempty"`
 }
 
 type FileMeta struct {
@@ -52,6 +55,10 @@ func NewChunker(maxTokens int) *Chunker {
 }
 
 func (c *Chunker) Chunk(decls []ParsedDecl, filePath string, meta FileMeta) []Chunk {
+	return c.ChunkWithVars(decls, filePath, meta, nil, "")
+}
+
+func (c *Chunker) ChunkWithVars(decls []ParsedDecl, filePath string, meta FileMeta, ve *VariableExtractor, src string) []Chunk {
 	var chunks []Chunk
 	tested := extractTestedSymbols(decls)
 
@@ -74,6 +81,27 @@ func (c *Chunker) Chunk(decls []ParsedDecl, filePath string, meta FileMeta) []Ch
 			Imports:   meta.Imports,
 		})
 	}
+
+	if ve != nil && src != "" {
+		for i, ch := range chunks {
+			for _, d := range decls {
+				if d.Name == ch.SymbolName && d.StartLine == ch.StartLine {
+					vars := ve.ExtractVariables(d, src, meta.Package)
+					chunks[i].Variables = vars
+					for _, v := range vars {
+						if v.Type != "" {
+							chunks[i].Types = addUnique(chunks[i].Types, v.Type)
+						}
+					}
+					if len(chunks[i].Types) == 0 {
+						chunks[i].Types = nil
+					}
+					break
+				}
+			}
+		}
+	}
+
 	return chunks
 }
 
@@ -211,4 +239,11 @@ func extractTestedSymbols(decls []ParsedDecl) []string {
 		}
 	}
 	return out
+}
+
+func addUnique(slice []string, item string) []string {
+	if slices.Contains(slice, item) {
+		return slice
+	}
+	return append(slice, item)
 }

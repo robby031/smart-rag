@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/robby031/smart-rag/pkg/dataflow"
 	"github.com/robby031/smart-rag/pkg/graph"
 	"github.com/robby031/smart-rag/pkg/indexer"
 	"github.com/robby031/smart-rag/pkg/search"
@@ -22,6 +23,9 @@ type Engine struct {
 	callGraph        *graph.CallGraph
 	importGraph      *graph.ImportGraph
 	chunkStore       *storage.ChunkStore
+	flowGraph        *dataflow.FlowGraphBuilder
+	flowIndex        *dataflow.FlowIndex
+	flowStore        *storage.FlowStore
 	pruningMode      PruningMode
 	indexDirty       bool
 	indexMu          sync.RWMutex
@@ -37,6 +41,9 @@ func New(kvStore *storage.Store, chunkStore *storage.ChunkStore, _ *storage.Vect
 	bm25 := search.NewBM25()
 	cg := graph.NewPersistentCallGraph(graphStore)
 	ig := graph.NewPersistentImportGraph(graphStore)
+	flowStore := storage.NewFlowStore(kvStore)
+	flowGraph := dataflow.NewFlowGraphBuilder(cg)
+	flowIndex := dataflow.NewFlowIndex()
 
 	return &Engine{
 		chunker:     chunker,
@@ -48,6 +55,9 @@ func New(kvStore *storage.Store, chunkStore *storage.ChunkStore, _ *storage.Vect
 		callGraph:   cg,
 		importGraph: ig,
 		chunkStore:  chunkStore,
+		flowStore:   flowStore,
+		flowGraph:   flowGraph,
+		flowIndex:   flowIndex,
 		pruningMode: PruningModeSoft,
 	}
 }
@@ -83,6 +93,18 @@ func (e *Engine) Query(ctx context.Context, q Query) (*Response, error) {
 	case QueryReadSnippet:
 		resp.Type = "read_snippet"
 		return e.readSnippet(ctx, q, resp)
+	case QueryTraceVariable:
+		resp.Type = "trace_variable"
+		return e.handleTraceVariable(q)
+	case QueryFunctionFlow:
+		resp.Type = "function_dataflow"
+		return e.handleFunctionFlow(q)
+	case QueryTypeProvenance:
+		resp.Type = "type_flow"
+		return e.handleTypeProvenance(q)
+	case QueryVariableSearch:
+		resp.Type = "variable_search"
+		return e.handleVariableSearch(q)
 	default:
 		return nil, fmt.Errorf("unknown query type: %v", q.Type)
 	}

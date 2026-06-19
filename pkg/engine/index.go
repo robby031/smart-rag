@@ -3,12 +3,14 @@ package engine
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 
+	"github.com/robby031/smart-rag/pkg/dataflow"
 	"github.com/robby031/smart-rag/pkg/indexer"
 	"github.com/robby031/smart-rag/pkg/searcher"
 	"github.com/robby031/smart-rag/pkg/storage"
@@ -52,6 +54,9 @@ func (e *Engine) indexGoFileWith(
 	if err := e.chunkStore.DeleteByFile(filePath); err != nil {
 		return fmt.Errorf("delete stale chunks %s: %w", filePath, err)
 	}
+	if e.flowStore != nil {
+		e.flowStore.DeleteByFile(filePath)
+	}
 
 	astFile, decls, fileInfo, err := e.parser.ParseFile(filePath, src)
 	if err != nil {
@@ -64,7 +69,8 @@ func (e *Engine) indexGoFileWith(
 		Imports: fileInfo.Imports,
 		IsTest:  fileInfo.IsTest,
 	}
-	chunks := e.chunker.Chunk(decls, filePath, meta)
+	ve := indexer.NewVariableExtractor()
+	chunks := e.chunker.ChunkWithVars(decls, filePath, meta, ve, src)
 
 	storeMetas := make([]storage.ChunkMeta, 0, len(chunks))
 	for _, ch := range chunks {
@@ -75,7 +81,7 @@ func (e *Engine) indexGoFileWith(
 		}
 		addDoc(freq, ch.ID)
 
-		storeMetas = append(storeMetas, storage.ChunkMeta{
+		cm := storage.ChunkMeta{
 			ID:         ch.ID,
 			FilePath:   ch.FilePath,
 			ChunkType:  fmt.Sprintf("%d", ch.ChunkType),
@@ -84,10 +90,30 @@ func (e *Engine) indexGoFileWith(
 			StartLine:  ch.StartLine,
 			EndLine:    ch.EndLine,
 			Content:    ch.Content,
-		})
+		}
+		storeMetas = append(storeMetas, cm)
 	}
 	if err := chunkSink(storeMetas); err != nil {
 		return fmt.Errorf("store chunks: %w", err)
+	}
+
+	if e.flowGraph != nil && e.flowStore != nil {
+		fg, err := e.flowGraph.BuildFromAST(astFile, e.parser.FileSet(), filePath, fileInfo.Package)
+		if err == nil {
+			for _, v := range fg.Variables {
+				e.flowStore.SaveVariable(v)
+			}
+			for _, chain := range fg.DefUseMap {
+				e.flowStore.SaveChain(chain)
+			}
+			for _, node := range fg.TypeNodes {
+				e.flowStore.SaveTypeNode(node)
+			}
+			for _, edge := range fg.Edges {
+				e.flowStore.SaveEdge(&edge)
+			}
+			e.flowIndex.BuildFromFlowGraph(fg)
+		}
 	}
 
 	e.callGraph.DeleteByFile(filePath)
@@ -109,6 +135,9 @@ func (e *Engine) indexJSFileWith(
 ) error {
 	if err := e.chunkStore.DeleteByFile(filePath); err != nil {
 		return fmt.Errorf("delete stale chunks %s: %w", filePath, err)
+	}
+	if e.flowStore != nil {
+		e.flowStore.DeleteByFile(filePath)
 	}
 
 	decls, fileInfo, err := indexer.ParseJSFile(filePath, src)
@@ -273,6 +302,35 @@ func (e *Engine) FinalizeIndex() error {
 	if _, err := e.applyHardPruning(); err != nil {
 		return fmt.Errorf("hard prune chunks: %w", err)
 	}
+	if e.flowStore != nil && e.flowIndex != nil {
+		fg := &dataflow.FlowGraph{
+			Variables: make(map[string]*dataflow.Variable),
+			Defs:      make(map[string]*dataflow.VarDef),
+			Uses:      make(map[string]*dataflow.VarUse),
+			DefUseMap: make(map[string]*dataflow.DefUseChain),
+			TypeNodes: make(map[string]*dataflow.TypeFlowNode),
+		}
+
+		vars, _ := e.flowStore.LoadAllVariables()
+		for _, v := range vars {
+			fg.Variables[v.Name] = v
+		}
+
+		defs, _ := e.flowStore.LoadAllDefs()
+		for _, d := range defs {
+			fg.Defs[d.ID] = d
+		}
+
+		uses, _ := e.flowStore.LoadAllUses()
+		for _, u := range uses {
+			fg.Uses[u.ID] = u
+		}
+
+		edges, _ := e.flowStore.LoadAllEdges()
+		fg.Edges = edges
+
+		e.flowIndex.BuildFromFlowGraph(fg)
+	}
 	e.indexDirty = false
 	return e.importGraph.Flush()
 }
@@ -285,9 +343,7 @@ func (e *Engine) warmupBM25() error {
 	for _, ch := range chunks {
 		tokens := e.tokenizer.Tokenize(ch.Content)
 		freq := make(map[string]int)
-		for tok, count := range tokens {
-			freq[tok] = count
-		}
+		maps.Copy(freq, tokens)
 		e.bm25.AddDocument(freq, ch.ID)
 	}
 	return nil

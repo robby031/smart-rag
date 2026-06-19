@@ -108,9 +108,10 @@ func (b *FlowGraphBuilder) buildIntraEdges(chains []*DefUseChain) []DataFlowEdge
 	for _, chain := range chains {
 		for _, use := range chain.Uses {
 			kind := "def_use"
-			if use.Kind == UseCallArg {
+			switch use.Kind {
+			case UseCallArg:
 				kind = "call_arg"
-			} else if use.Kind == UseReturn {
+			case UseReturn:
 				kind = "return_assign"
 			}
 			edges = append(edges, DataFlowEdge{
