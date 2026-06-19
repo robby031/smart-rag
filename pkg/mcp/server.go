@@ -75,8 +75,8 @@ func (s *SmartRAGServer) registerTools() {
 		mcp.WithDescription("Retrieve full context for a code chunk, budget-limited for AI consumption"),
 		mcp.WithString("chunk_id", mcp.Required(), mcp.Description("Chunk ID (e.g. path/file.go:1-42 or path/file.ts:1-42)")),
 		mcp.WithNumber("max_tokens", mcp.Description("Max characters/tokens to return (default full)")),
-		mcp.WithString("include_variables", mcp.Description("Sertakan info variable (default: true)")),
-		mcp.WithString("include_dataflow", mcp.Description("Sertakan aliran data (default: false)")),
+		mcp.WithString("include_variables", mcp.Description("Include variable info (default: true)")),
+		mcp.WithString("include_dataflow", mcp.Description("Include dataflow info (default: false)")),
 	), s.handleGetContextPack)
 
 	s.mcpServer.AddTool(mcp.NewTool("read_snippet",
@@ -85,38 +85,38 @@ func (s *SmartRAGServer) registerTools() {
 	), s.handleReadSnippet)
 
 	s.mcpServer.AddTool(mcp.NewTool("trace_variable",
-		mcp.WithDescription("Lacak variable melalui rantai definisi-ke-penggunaan (def-use chain). "+
-			"Menunjukkan dari mana variable berasal, bagaimana diubah, dan ke mana digunakan."),
-		mcp.WithString("variable", mcp.Required(), mcp.Description("Nama variable yang ingin dilacak")),
-		mcp.WithString("location", mcp.Description("Lokasi anchor opsional (file:line)")),
-		mcp.WithNumber("depth", mcp.Description("Kedalaman maksimum trace (default 5)")),
+		mcp.WithDescription("Trace a variable through its def-use chain. "+
+			"Shows where a variable is defined, how it is modified, and where it is used."),
+		mcp.WithString("variable", mcp.Required(), mcp.Description("Variable name to trace")),
+		mcp.WithString("location", mcp.Description("Optional anchor location (file:line) to disambiguate")),
+		mcp.WithNumber("depth", mcp.Description("Maximum trace depth (default 5)")),
 	), s.handleTraceVariable)
 
 	s.mcpServer.AddTool(mcp.NewTool("function_dataflow",
-		mcp.WithDescription("Tampilkan aliran data dalam suatu fungsi: parameter masukan, variable internal, nilai keluaran."),
-		mcp.WithString("function", mcp.Required(), mcp.Description("Nama fungsi (contoh: pkg.FuncName)")),
-		mcp.WithNumber("depth", mcp.Description("Kedalaman trace (default 1)")),
+		mcp.WithDescription("Show data flow inside a function: inputs (parameters), internal variables, and outputs (return values)."),
+		mcp.WithString("function", mcp.Required(), mcp.Description("Function name (e.g. pkg.FuncName)")),
+		mcp.WithNumber("depth", mcp.Description("Trace depth (default 1)")),
 	), s.handleFunctionFlow)
 
 	s.mcpServer.AddTool(mcp.NewTool("type_flow",
-		mcp.WithDescription("Lacak bagaimana suatu tipe digunakan di seluruh codebase. "+
-			"Forward trace: fungsi yang menggunakan tipe. Backward trace: tipe yang mengandung tipe ini."),
-		mcp.WithString("type_name", mcp.Required(), mcp.Description("Nama tipe (contoh: User, Config)")),
-		mcp.WithNumber("depth", mcp.Description("Kedalaman maksimum (default 3)")),
+		mcp.WithDescription("Trace how a type is used across the codebase. "+
+			"Forward trace: functions using the type. Backward trace: types containing this type."),
+		mcp.WithString("type_name", mcp.Required(), mcp.Description("Type name (e.g. User, Config)")),
+		mcp.WithNumber("depth", mcp.Description("Maximum depth (default 3)")),
 	), s.handleTypeFlow)
 
 	s.mcpServer.AddTool(mcp.NewTool("variable_search",
-		mcp.WithDescription("Cari variable secara semantik di seluruh codebase. "+
-			"Mendukung exact match, fuzzy match, dan pencarian berdasarkan tipe."),
-		mcp.WithString("query", mcp.Required(), mcp.Description("Kata kunci pencarian")),
-		mcp.WithNumber("top_k", mcp.Description("Jumlah hasil maksimum (default 10)")),
+		mcp.WithDescription("Search for variables semantically across the codebase. "+
+			"Supports exact match, fuzzy match, and type-based search. Results sorted by relevance."),
+		mcp.WithString("query", mcp.Required(), mcp.Description("Search query")),
+		mcp.WithNumber("top_k", mcp.Description("Maximum results (default 10)")),
 	), s.handleVariableSearch)
 
 	s.mcpServer.AddTool(mcp.NewTool("trace_runtime",
-		mcp.WithDescription("Tampilkan data trace runtime untuk suatu fungsi atau variable. "+
-			"Data dikumpulkan dengan menjalankan tes menggunakan instrumentasi."),
-		mcp.WithString("function", mcp.Required(), mcp.Description("Nama fungsi atau variable")),
-		mcp.WithString("test_pattern", mcp.Description("Pattern test (default:./...)")),
+		mcp.WithDescription("Show runtime trace data for a function or variable. "+
+			"Data is collected by running tests with automatic instrumentation."),
+		mcp.WithString("function", mcp.Required(), mcp.Description("Function or variable name")),
+		mcp.WithString("test_pattern", mcp.Description("Test pattern (default: ./...)")),
 	), s.handleTraceRuntime)
 }
 
@@ -391,8 +391,8 @@ func formatResults(resp *engine.Response) string {
 		return "No results found."
 	}
 	var out strings.Builder
-	for i, r := range resp.Results {
-		out.WriteString(fmt.Sprintf("[%d] ", i+1))
+	for idx, r := range resp.Results {
+		out.WriteString(fmt.Sprintf("[%d] ", idx+1))
 		if r.Node != nil {
 			out.WriteString(fmt.Sprintf("Node: %s (%s:%d)\n", r.Node.ID(), r.Node.File, r.Node.Line))
 		}
@@ -408,7 +408,6 @@ func formatResults(resp *engine.Response) string {
 		if r.Score > 0 {
 			out.WriteString(fmt.Sprintf("Score: %.4f\n", r.Score))
 		}
-		_ = i
 		out.WriteString("\n")
 	}
 	return out.String()
@@ -417,15 +416,15 @@ func formatResults(resp *engine.Response) string {
 func formatStatus(status engine.Status) string {
 	var out strings.Builder
 	out.WriteString("smart-rag status\n")
-	out.WriteString(fmt.Sprintf("Version: %s\n", valueOrUnavailable(status.Version)))
-	out.WriteString(fmt.Sprintf("Indexed chunks: %d\n", status.IndexedChunks))
-	out.WriteString(fmt.Sprintf("Graph nodes: %d\n", status.GraphNodes))
-	out.WriteString(fmt.Sprintf("Graph edges: %d\n", status.GraphEdges))
-	out.WriteString(fmt.Sprintf("BM25 ready: %t\n", status.BM25Ready))
-	out.WriteString(fmt.Sprintf("BM25 empty: %t\n", status.BM25Empty))
-	out.WriteString(fmt.Sprintf("Repo path: %s\n", valueOrUnavailable(status.RepoDir)))
-	out.WriteString(fmt.Sprintf("DB path: %s\n", valueOrUnavailable(status.DBDir)))
-	out.WriteString(fmt.Sprintf("Last index: %s", valueOrUnavailable(status.LastIndexSummary)))
+	fmt.Fprintf(&out, "Version: %s\n", valueOrUnavailable(status.Version))
+	fmt.Fprintf(&out, "Indexed chunks: %d\n", status.IndexedChunks)
+	fmt.Fprintf(&out, "Graph nodes: %d\n", status.GraphNodes)
+	fmt.Fprintf(&out, "Graph edges: %d\n", status.GraphEdges)
+	fmt.Fprintf(&out, "BM25 ready: %t\n", status.BM25Ready)
+	fmt.Fprintf(&out, "BM25 empty: %t\n", status.BM25Empty)
+	fmt.Fprintf(&out, "Repo path: %s\n", valueOrUnavailable(status.RepoDir))
+	fmt.Fprintf(&out, "DB path: %s\n", valueOrUnavailable(status.DBDir))
+	fmt.Fprintf(&out, "Last index: %s", valueOrUnavailable(status.LastIndexSummary))
 	return out.String()
 }
 

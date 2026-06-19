@@ -132,7 +132,7 @@ func (t *JSTypeFlowTracker) walkParamType(node *sitter.Node, src []byte, funcID 
 	}
 }
 
-func (t *JSTypeFlowTracker) walkVarType(node *sitter.Node, src []byte, pkg string) {
+func (t *JSTypeFlowTracker) walkVarType(node *sitter.Node, src []byte, _ string) {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		decl := node.Child(i)
 		if decl.Type() != "variable_declarator" {

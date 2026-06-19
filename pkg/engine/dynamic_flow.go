@@ -30,11 +30,6 @@ func (e *Engine) handleDynamicFlow(q Query) (*Response, error) {
 		}, nil
 	}
 
-	raw, err := e.flowStore.LoadAllDefs()
-	if err != nil {
-		_ = raw
-	}
-
 	if q.Text == "" {
 		return &Response{
 			Query: q.Text,
@@ -65,9 +60,6 @@ func (e *Engine) handleDynamicFlow(q Query) (*Response, error) {
 
 func (e *Engine) queryTraceEvents(query string) []Result {
 	isFuncID := strings.Contains(query, ".")
-
-	tracePrefix := "trace:"
-	_ = tracePrefix
 
 	if isFuncID {
 		result := DynamicFlowResult{

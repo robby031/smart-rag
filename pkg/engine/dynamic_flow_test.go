@@ -85,4 +85,16 @@ func TestTraceEventView(t *testing.T) {
 	if view.EventType != "assign" {
 		t.Errorf("expected assign, got %s", view.EventType)
 	}
+	if view.VarName != "x" {
+		t.Errorf("expected var x, got %s", view.VarName)
+	}
+	if view.Value != "42" {
+		t.Errorf("expected value 42, got %s", view.Value)
+	}
+	if view.File != "main.go" {
+		t.Errorf("expected main.go, got %s", view.File)
+	}
+	if view.Line != 5 {
+		t.Errorf("expected line 5, got %d", view.Line)
+	}
 }

@@ -16,7 +16,7 @@ import (
 	"github.com/robby031/smart-rag/pkg/storage"
 )
 
-func (e *Engine) IndexFile(ctx context.Context, filePath, src string) error {
+func (e *Engine) IndexFile(_ context.Context, filePath, src string) error {
 	e.indexMu.Lock()
 	defer e.indexMu.Unlock()
 	e.indexDirty = true
@@ -196,7 +196,7 @@ func (e *Engine) indexJSFileWith(
 	return nil
 }
 
-func (e *Engine) IndexDir(ctx context.Context, repoDir string, workers int) error {
+func (e *Engine) IndexDir(_ context.Context, repoDir string, workers int) error {
 	e.indexMu.Lock()
 	defer e.indexMu.Unlock()
 	e.indexDirty = true

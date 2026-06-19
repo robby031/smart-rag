@@ -13,7 +13,6 @@ func main() {
 	repoDir := flag.String("repo", ".", "Path ke repository")
 	pkgPattern := flag.String("pkg", "./...", "Package pattern untuk instrumentasi")
 	testPattern := flag.String("test", "./...", "Test pattern untuk dijalankan")
-	varFilter := flag.String("var-filter", "", "Regex filter untuk variable (default semua)")
 	doCleanup := flag.Bool("cleanup", true, "Bersihkan file instrumentasi setelah selesai")
 	flag.Parse()
 
@@ -55,8 +54,6 @@ func main() {
 	if *doCleanup {
 		defer cleanup(backups)
 	}
-
-	_ = varFilter
 
 	fmt.Fprintf(os.Stderr, "Running tests: go test -v %s\n", *testPattern)
 	runner := newTraceRunner(absRepo, *testPattern)

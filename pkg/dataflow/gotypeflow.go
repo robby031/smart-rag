@@ -53,7 +53,7 @@ func (t *TypeFlowTracker) ExtractFromAST(astFile *ast.File, fset *token.FileSet,
 	return nil
 }
 
-func (t *TypeFlowTracker) processTypeSpec(spec *ast.TypeSpec, fset *token.FileSet, pkg string) {
+func (t *TypeFlowTracker) processTypeSpec(spec *ast.TypeSpec, fset *token.FileSet, _ string) {
 	name := spec.Name.Name
 	pos := fset.Position(spec.Pos())
 
@@ -79,7 +79,7 @@ func (t *TypeFlowTracker) processTypeSpec(spec *ast.TypeSpec, fset *token.FileSe
 	}
 }
 
-func (t *TypeFlowTracker) processFuncDecl(fn *ast.FuncDecl, fset *token.FileSet, pkg string) {
+func (t *TypeFlowTracker) processFuncDecl(fn *ast.FuncDecl, _ *token.FileSet, pkg string) {
 	funcID := fmt.Sprintf("%s.%s", pkg, fn.Name.Name)
 
 	if fn.Type.Params != nil {
