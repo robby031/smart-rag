@@ -46,6 +46,20 @@ func (e *Engine) search(_ context.Context, q Query, resp *Response) (*Response, 
 			continue
 		}
 		score, details := rankSearchResult(q, tokens, sr.Score, chunk, queryReachable, e.pruningEnabled())
+
+		if e.flowIndex != nil {
+			vars := e.flowIndex.ByVariableName(q.Text)
+			if len(vars) > 0 {
+				for _, v := range vars {
+					if v.File == chunk.FilePath && v.DefLine >= chunk.StartLine && v.DefLine <= chunk.EndLine {
+						score += 0.5
+						details = append(details, "boost var_definition=0.5000")
+						break
+					}
+				}
+			}
+		}
+
 		candidates = append(candidates, Result{
 			Score:   score,
 			Chunk:   chunk,
