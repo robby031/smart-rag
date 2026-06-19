@@ -86,6 +86,14 @@ func (idx *FlowIndex) GetChain(defID string) *DefUseChain {
 	return idx.chains[defID]
 }
 
+func (idx *FlowIndex) GetAllChains() []*DefUseChain {
+	chains := make([]*DefUseChain, 0, len(idx.chains))
+	for _, c := range idx.chains {
+		chains = append(chains, c)
+	}
+	return chains
+}
+
 func (idx *FlowIndex) GetTypeNode(typeName string) *TypeFlowNode {
 	return idx.typeNodes[typeName]
 }
