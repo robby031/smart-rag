@@ -75,12 +75,49 @@ func (s *SmartRAGServer) registerTools() {
 		mcp.WithDescription("Retrieve full context for a code chunk, budget-limited for AI consumption"),
 		mcp.WithString("chunk_id", mcp.Required(), mcp.Description("Chunk ID (e.g. path/file.go:1-42 or path/file.ts:1-42)")),
 		mcp.WithNumber("max_tokens", mcp.Description("Max characters/tokens to return (default full)")),
+		mcp.WithString("include_variables", mcp.Description("Sertakan info variable (default: true)")),
+		mcp.WithString("include_dataflow", mcp.Description("Sertakan aliran data (default: false)")),
 	), s.handleGetContextPack)
 
 	s.mcpServer.AddTool(mcp.NewTool("read_snippet",
 		mcp.WithDescription("Read a specific code snippet at a given file:line location"),
 		mcp.WithString("location", mcp.Required(), mcp.Description("File:line or file:start-end (e.g. main.go:10-25)")),
 	), s.handleReadSnippet)
+
+	s.mcpServer.AddTool(mcp.NewTool("trace_variable",
+		mcp.WithDescription("Lacak variable melalui rantai definisi-ke-penggunaan (def-use chain). "+
+			"Menunjukkan dari mana variable berasal, bagaimana diubah, dan ke mana digunakan."),
+		mcp.WithString("variable", mcp.Required(), mcp.Description("Nama variable yang ingin dilacak")),
+		mcp.WithString("location", mcp.Description("Lokasi anchor opsional (file:line)")),
+		mcp.WithNumber("depth", mcp.Description("Kedalaman maksimum trace (default 5)")),
+	), s.handleTraceVariable)
+
+	s.mcpServer.AddTool(mcp.NewTool("function_dataflow",
+		mcp.WithDescription("Tampilkan aliran data dalam suatu fungsi: parameter masukan, variable internal, nilai keluaran."),
+		mcp.WithString("function", mcp.Required(), mcp.Description("Nama fungsi (contoh: pkg.FuncName)")),
+		mcp.WithNumber("depth", mcp.Description("Kedalaman trace (default 1)")),
+	), s.handleFunctionFlow)
+
+	s.mcpServer.AddTool(mcp.NewTool("type_flow",
+		mcp.WithDescription("Lacak bagaimana suatu tipe digunakan di seluruh codebase. "+
+			"Forward trace: fungsi yang menggunakan tipe. Backward trace: tipe yang mengandung tipe ini."),
+		mcp.WithString("type_name", mcp.Required(), mcp.Description("Nama tipe (contoh: User, Config)")),
+		mcp.WithNumber("depth", mcp.Description("Kedalaman maksimum (default 3)")),
+	), s.handleTypeFlow)
+
+	s.mcpServer.AddTool(mcp.NewTool("variable_search",
+		mcp.WithDescription("Cari variable secara semantik di seluruh codebase. "+
+			"Mendukung exact match, fuzzy match, dan pencarian berdasarkan tipe."),
+		mcp.WithString("query", mcp.Required(), mcp.Description("Kata kunci pencarian")),
+		mcp.WithNumber("top_k", mcp.Description("Jumlah hasil maksimum (default 10)")),
+	), s.handleVariableSearch)
+
+	s.mcpServer.AddTool(mcp.NewTool("trace_runtime",
+		mcp.WithDescription("Tampilkan data trace runtime untuk suatu fungsi atau variable. "+
+			"Data dikumpulkan dengan menjalankan tes menggunakan instrumentasi."),
+		mcp.WithString("function", mcp.Required(), mcp.Description("Nama fungsi atau variable")),
+		mcp.WithString("test_pattern", mcp.Description("Pattern test (default:./...)")),
+	), s.handleTraceRuntime)
 }
 
 func (s *SmartRAGServer) handleRAGStatus(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -223,6 +260,128 @@ func (s *SmartRAGServer) handleReadSnippet(ctx context.Context, req mcp.CallTool
 	})
 	if err != nil {
 		return mcp.NewToolResultText(fmt.Sprintf("read snippet failed: %v", err)), nil
+	}
+	return mcp.NewToolResultText(formatResults(resp)), nil
+}
+
+func (s *SmartRAGServer) handleTraceVariable(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	variable, ok := req.Params.Arguments["variable"].(string)
+	if !ok || variable == "" {
+		return mcp.NewToolResultText("variable is required"), nil
+	}
+	location, _ := req.Params.Arguments["location"].(string)
+	depth := 5
+	if v, ok := req.Params.Arguments["depth"]; ok {
+		if f, ok := v.(float64); ok && f > 0 {
+			depth = int(f)
+			if depth > 20 {
+				depth = 20
+			}
+		}
+	}
+	resp, err := s.engine.Query(ctx, engine.Query{
+		Type:     engine.QueryTraceVariable,
+		Text:     variable,
+		File:     location,
+		MaxDepth: depth,
+	})
+	if err != nil {
+		return mcp.NewToolResultText(fmt.Sprintf("trace_variable failed: %v", err)), nil
+	}
+	return mcp.NewToolResultText(formatResults(resp)), nil
+}
+
+func (s *SmartRAGServer) handleFunctionFlow(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	fn, ok := req.Params.Arguments["function"].(string)
+	if !ok || fn == "" {
+		return mcp.NewToolResultText("function is required"), nil
+	}
+	depth := 1
+	if v, ok := req.Params.Arguments["depth"]; ok {
+		if f, ok := v.(float64); ok && f > 0 {
+			depth = int(f)
+			if depth > 5 {
+				depth = 5
+			}
+		}
+	}
+	resp, err := s.engine.Query(ctx, engine.Query{
+		Type:     engine.QueryFunctionFlow,
+		Text:     fn,
+		MaxDepth: depth,
+	})
+	if err != nil {
+		return mcp.NewToolResultText(fmt.Sprintf("function_dataflow failed: %v", err)), nil
+	}
+	return mcp.NewToolResultText(formatResults(resp)), nil
+}
+
+func (s *SmartRAGServer) handleTypeFlow(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	typeName, ok := req.Params.Arguments["type_name"].(string)
+	if !ok || typeName == "" {
+		return mcp.NewToolResultText("type_name is required"), nil
+	}
+	depth := 3
+	if v, ok := req.Params.Arguments["depth"]; ok {
+		if f, ok := v.(float64); ok && f > 0 {
+			depth = int(f)
+			if depth > 10 {
+				depth = 10
+			}
+		}
+	}
+	resp, err := s.engine.Query(ctx, engine.Query{
+		Type:     engine.QueryTypeProvenance,
+		Text:     typeName,
+		MaxDepth: depth,
+	})
+	if err != nil {
+		return mcp.NewToolResultText(fmt.Sprintf("type_flow failed: %v", err)), nil
+	}
+	return mcp.NewToolResultText(formatResults(resp)), nil
+}
+
+func (s *SmartRAGServer) handleVariableSearch(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	query, ok := req.Params.Arguments["query"].(string)
+	if !ok || query == "" {
+		return mcp.NewToolResultText("query is required"), nil
+	}
+	topK := 10
+	if v, ok := req.Params.Arguments["top_k"]; ok {
+		if f, ok := v.(float64); ok && f > 0 {
+			topK = int(f)
+			if topK > 100 {
+				topK = 100
+			}
+		}
+	}
+	resp, err := s.engine.Query(ctx, engine.Query{
+		Type: engine.QueryVariableSearch,
+		Text: query,
+		TopK: topK,
+	})
+	if err != nil {
+		return mcp.NewToolResultText(fmt.Sprintf("variable_search failed: %v", err)), nil
+	}
+	return mcp.NewToolResultText(formatResults(resp)), nil
+}
+
+func (s *SmartRAGServer) handleTraceRuntime(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	fn, ok := req.Params.Arguments["function"].(string)
+	if !ok || fn == "" {
+		return mcp.NewToolResultText("function is required"), nil
+	}
+	testPattern, _ := req.Params.Arguments["test_pattern"].(string)
+	if testPattern == "" {
+		testPattern = "./..."
+	}
+	resp, err := s.engine.Query(ctx, engine.Query{
+		Type: engine.QueryDynamicFlow,
+		Text: fn,
+		File: testPattern,
+	})
+	if err != nil {
+		return mcp.NewToolResultText(fmt.Sprintf("trace_runtime failed: %v", err)), nil
 	}
 	return mcp.NewToolResultText(formatResults(resp)), nil
 }
