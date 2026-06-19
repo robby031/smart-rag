@@ -92,6 +92,8 @@ func (e *Engine) Query(ctx context.Context, q Query) (*Response, error) {
 }
 
 func (e *Engine) Stats() map[string]int {
+	e.indexMu.RLock()
+	defer e.indexMu.RUnlock()
 	graphStats := e.callGraph.Stats()
 	m := map[string]int{
 		"chunks":      len(e.bm25.DocIDs),
