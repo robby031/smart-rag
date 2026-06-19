@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/robby031/smart-rag/pkg/dataflow"
 	"github.com/robby031/smart-rag/pkg/storage"
 )
 
@@ -21,8 +22,14 @@ func (e *Engine) getContextPack(_ context.Context, q Query, resp *Response) (*Re
 			content: formatContextChunk("primary", primary),
 		},
 	}
+	if vars := e.contextVariables(primary); vars != "" {
+		sections = append(sections, contextSection{name: "variables", content: vars})
+	}
 	if nearby := e.contextNearby(primary); nearby != "" {
 		sections = append(sections, contextSection{name: "nearby", content: nearby})
+	}
+	if df := e.contextDataFlow(primary); df != "" {
+		sections = append(sections, contextSection{name: "dataflow", content: df})
 	}
 	if related := e.contextRelated(primary); related != "" {
 		sections = append(sections, contextSection{name: "related", content: related})
@@ -33,6 +40,93 @@ func (e *Engine) getContextPack(_ context.Context, q Query, resp *Response) (*Re
 		Content: buildContextPack(sections, q.MaxTokens),
 	})
 	return resp, nil
+}
+
+func (e *Engine) contextVariables(primary *storage.ChunkMeta) string {
+	if primary.SymbolName == "" || e.flowIndex == nil {
+		return ""
+	}
+
+	funcID := fmt.Sprintf("%s.%s", extractPkg(primary.FilePath), primary.SymbolName)
+	vars := e.flowIndex.ByFunction(funcID)
+	if len(vars) == 0 {
+		return ""
+	}
+
+	var out strings.Builder
+	out.WriteString("## variables")
+
+	for _, v := range vars {
+		typeName := v.Type
+		if typeName == "" {
+			typeName = "unknown"
+		}
+		out.WriteString(fmt.Sprintf("\n- `%s` (%s)", v.Name, typeName))
+		if v.Scope == dataflow.ScopeParam {
+			out.WriteString(" [parameter]")
+		}
+		out.WriteString(fmt.Sprintf(" — line %d", v.DefLine))
+	}
+
+	return out.String()
+}
+
+func (e *Engine) contextDataFlow(primary *storage.ChunkMeta) string {
+	if primary.SymbolName == "" || e.flowIndex == nil {
+		return ""
+	}
+
+	funcID := fmt.Sprintf("%s.%s", extractPkg(primary.FilePath), primary.SymbolName)
+	vars := e.flowIndex.ByFunction(funcID)
+	if len(vars) == 0 {
+		return ""
+	}
+
+	var inputs, outputs, locals []string
+	seenOutput := make(map[string]bool)
+
+	for _, v := range vars {
+		switch v.Scope {
+		case dataflow.ScopeParam:
+			inputs = append(inputs, v.Name)
+		case dataflow.ScopeLocal:
+			locals = append(locals, v.Name)
+		}
+
+		defID := defIDForVar(v)
+		chain := e.flowIndex.GetChain(defID)
+		if chain == nil {
+			continue
+		}
+		for _, use := range chain.Uses {
+			if use.Kind == dataflow.UseReturn && !seenOutput[v.Name] {
+				outputs = append(outputs, v.Name)
+				seenOutput[v.Name] = true
+				break
+			}
+		}
+	}
+
+	if len(inputs) == 0 && len(outputs) == 0 && len(locals) == 0 {
+		return ""
+	}
+
+	var out strings.Builder
+	out.WriteString("## dataflow")
+	if len(inputs) > 0 {
+		out.WriteString("\n**inputs:** ")
+		out.WriteString(strings.Join(inputs, ", "))
+	}
+	if len(outputs) > 0 {
+		out.WriteString("\n**outputs:** ")
+		out.WriteString(strings.Join(outputs, ", "))
+	}
+	if len(locals) > 0 {
+		out.WriteString("\n**internal:** ")
+		out.WriteString(strings.Join(locals, ", "))
+	}
+
+	return out.String()
 }
 
 type contextSection struct {
@@ -231,6 +325,14 @@ func dedupeStrings(in []string) []string {
 		out = append(out, s)
 	}
 	return out
+}
+
+func extractPkg(filePath string) string {
+	parts := strings.SplitN(filePath, "/", 3)
+	if len(parts) >= 2 && parts[0] == "pkg" {
+		return parts[1]
+	}
+	return "main"
 }
 
 func (e *Engine) readSnippet(_ context.Context, q Query, resp *Response) (*Response, error) {
