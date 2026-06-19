@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"log"
 	"sort"
 
 	"github.com/robby031/smart-rag/pkg/storage"
@@ -81,6 +82,7 @@ func (cg *CallGraph) load() {
 	}
 	nodes, err := cg.store.LoadNodes()
 	if err != nil {
+		log.Printf("callgraph: failed to load nodes: %v", err)
 		return
 	}
 	for _, gn := range nodes {
@@ -89,6 +91,7 @@ func (cg *CallGraph) load() {
 	}
 	edges, err := cg.store.LoadEdges()
 	if err != nil {
+		log.Printf("callgraph: failed to load edges (nodes already loaded, graph may be incomplete): %v", err)
 		return
 	}
 	for _, e := range edges {
