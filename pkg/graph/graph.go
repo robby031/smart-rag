@@ -153,6 +153,9 @@ type XrefResult struct {
 // Xref resolves all cross-references for a given symbol or package.
 // It searches across call graph and import graph.
 func (g *Graph) Xref(symbol string) *XrefResult {
+	g.callGraph.mu.Lock()
+	defer g.callGraph.mu.Unlock()
+
 	r := &XrefResult{Symbol: symbol}
 
 	if node, ok := g.callGraph.Nodes[symbol]; ok {
@@ -178,6 +181,9 @@ func (g *Graph) Xref(symbol string) *XrefResult {
 }
 
 func (g *Graph) SearchSymbol(query string) []*Node {
+	g.callGraph.mu.Lock()
+	defer g.callGraph.mu.Unlock()
+
 	var results []*Node
 	for _, n := range g.callGraph.Nodes {
 		if strings.Contains(strings.ToLower(n.Name), strings.ToLower(query)) ||
