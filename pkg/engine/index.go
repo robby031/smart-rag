@@ -151,7 +151,8 @@ func (e *Engine) indexJSFileWith(
 		Imports: fileInfo.Imports,
 		IsTest:  fileInfo.IsTest,
 	}
-	chunks := e.chunker.Chunk(decls, filePath, meta)
+	ve := indexer.NewVariableExtractor()
+	chunks := e.chunker.ChunkWithVars(decls, filePath, meta, ve, src)
 
 	storeMetas := make([]storage.ChunkMeta, 0, len(chunks))
 	for _, ch := range chunks {
@@ -175,6 +176,16 @@ func (e *Engine) indexJSFileWith(
 	}
 	if err := chunkSink(storeMetas); err != nil {
 		return fmt.Errorf("store chunks: %w", err)
+	}
+
+	if e.flowStore != nil {
+		jsExtractor := dataflow.NewJSDefUseExtractor()
+		chains, err := jsExtractor.ExtractDefUse(src, filePath, fileInfo.Package)
+		if err == nil {
+			for _, chain := range chains {
+				e.flowStore.SaveChain(chain)
+			}
+		}
 	}
 
 	e.callGraph.DeleteByFile(filePath)
