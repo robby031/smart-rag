@@ -96,6 +96,9 @@ func (s *SmartRAGServer) handleSearchCode(ctx context.Context, req mcp.CallToolR
 	if v, ok := req.Params.Arguments["top_k"]; ok {
 		if f, ok := v.(float64); ok && f > 0 {
 			topK = int(f)
+			if topK > 200 {
+				topK = 200
+			}
 		}
 	}
 	language, _ := req.Params.Arguments["language"].(string)
@@ -171,6 +174,9 @@ func (s *SmartRAGServer) handleImpactAnalysis(ctx context.Context, req mcp.CallT
 	if v, ok := req.Params.Arguments["depth"]; ok {
 		if f, ok := v.(float64); ok && f > 0 {
 			depth = int(f)
+			if depth > 10 {
+				depth = 10
+			}
 		}
 	}
 	resp, err := s.engine.Query(ctx, engine.Query{
