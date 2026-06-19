@@ -13,21 +13,17 @@ import (
 )
 
 type Engine struct {
-	chunker     *indexer.Chunker
-	parser      *indexer.Parser
-	tokenizer   *indexer.Tokenizer
-	bm25        *search.BM25
-	astSearch   *searcher.ASTSearch
-	graph       *graph.Graph
-	callGraph   *graph.CallGraph
-	importGraph *graph.ImportGraph
-	chunkStore  *storage.ChunkStore
-	pruningMode PruningMode
-
-	// indexMu guards all mutable engine state (bm25, callgraph, importgraph).
-	// Write-locked during IndexFile/FinalizeIndex; read-locked during Query.
-	indexMu sync.RWMutex
-
+	chunker          *indexer.Chunker
+	parser           *indexer.Parser
+	tokenizer        *indexer.Tokenizer
+	bm25             *search.BM25
+	astSearch        *searcher.ASTSearch
+	graph            *graph.Graph
+	callGraph        *graph.CallGraph
+	importGraph      *graph.ImportGraph
+	chunkStore       *storage.ChunkStore
+	pruningMode      PruningMode
+	indexMu          sync.RWMutex
 	statusMu         sync.RWMutex
 	runtimeInfo      RuntimeInfo
 	lastIndexSummary IndexSummary

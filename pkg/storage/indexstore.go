@@ -47,7 +47,7 @@ func (is *IndexStore) GetHash(filePath string) (string, error) {
 func (is *IndexStore) HasChanged(filePath string, content []byte) (bool, error) {
 	stored, err := is.GetHash(filePath)
 	if err != nil {
-		return true, nil // not found = changed
+		return true, nil
 	}
 	return stored != ContentHash(content), nil
 }

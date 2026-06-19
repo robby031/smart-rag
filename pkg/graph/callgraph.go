@@ -149,7 +149,6 @@ func (cg *CallGraph) DeleteByFile(filePath string) {
 		delete(cg.dirtyNodes, id)
 		delete(cg.dirtyCallers, id)
 	}
-	// Remove stale in-edge entries that pointed to the deleted callers.
 	for callee := range cg.InEdges {
 		for _, id := range deleted {
 			delete(cg.InEdges[callee], id)

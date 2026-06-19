@@ -74,7 +74,6 @@ func TestParseJSFileTypeScript(t *testing.T) {
 		t.Error("IsTest should be false")
 	}
 
-	// Imports
 	if len(info.Imports) == 0 {
 		t.Error("expected at least one import")
 	}
@@ -89,7 +88,6 @@ func TestParseJSFileTypeScript(t *testing.T) {
 		t.Errorf("expected import %q in %v", wantImport, info.Imports)
 	}
 
-	// Build a name→decl map for easy assertions.
 	byName := make(map[string]ParsedDecl, len(decls))
 	for _, d := range decls {
 		byName[d.Name] = d

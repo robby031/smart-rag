@@ -71,9 +71,6 @@ func main() {
 		DBDir:   absDB,
 	})
 
-	// Start serving MCP immediately — persisted data (callgraph, chunks) is
-	// already loaded from BoltDB. Indexing runs in the background so clients
-	// can attach and call tools without waiting for sync to finish.
 	server := mcp.NewServer(eng, version)
 	fmt.Fprintln(os.Stderr, "Starting smart-rag MCP server...")
 

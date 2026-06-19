@@ -37,11 +37,10 @@ func Helper() {}
 		t.Fatalf("second ParseFile: %v", err)
 	}
 
-	// OldFunc must be gone.
 	if _, ok := cg.Nodes["engine.OldFunc"]; ok {
 		t.Errorf("ghost node engine.OldFunc still present after re-index")
 	}
-	// NewFunc and Helper must be present.
+
 	if _, ok := cg.Nodes["engine.NewFunc"]; !ok {
 		t.Errorf("engine.NewFunc missing after re-index")
 	}
@@ -56,7 +55,6 @@ func TestCallGraphDeleteByFileEdges(t *testing.T) {
 	filePath := "pkg/foo/foo.go"
 	pkg := "foo"
 
-	// First pass: A calls B and C.
 	firstSrc := `package foo
 func A() { B(); C() }
 func B() {}
@@ -69,7 +67,6 @@ func C() {}
 		t.Fatal("expected out-edges for foo.A after first pass")
 	}
 
-	// Second pass: A is removed, only B and D remain.
 	cg.DeleteByFile(filePath)
 
 	secondSrc := `package foo
@@ -79,16 +76,12 @@ func D() {}
 	if err := cg.ParseFile(filePath, secondSrc, pkg); err != nil {
 		t.Fatalf("second ParseFile: %v", err)
 	}
-
-	// foo.A must have no out-edges.
 	if len(cg.OutEdges["foo.A"]) > 0 {
 		t.Errorf("stale out-edges for ghost node foo.A: %v", cg.OutEdges["foo.A"])
 	}
-	// foo.C must be gone (it was only defined in this file).
 	if _, ok := cg.Nodes["foo.C"]; ok {
 		t.Errorf("ghost node foo.C still present after re-index")
 	}
-	// foo.B and foo.D must be present.
 	if _, ok := cg.Nodes["foo.B"]; !ok {
 		t.Errorf("foo.B missing after re-index")
 	}
@@ -116,7 +109,6 @@ func FuncB() {}
 		t.Fatalf("ParseFile b: %v", err)
 	}
 
-	// Delete only file1.
 	cg.DeleteByFile(file1)
 
 	if _, ok := cg.Nodes["a.FuncA"]; ok {

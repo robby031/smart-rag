@@ -18,8 +18,8 @@ const (
 	DeclInterface
 	DeclVar
 	DeclConst
-	DeclClass // JS/TS class
-	DeclEnum  // TS enum
+	DeclClass
+	DeclEnum
 )
 
 type ParsedDecl struct {
@@ -31,7 +31,6 @@ type ParsedDecl struct {
 	EndLine   int
 }
 
-// FileInfo holds file-level metadata extracted during parsing.
 type FileInfo struct {
 	Package string
 	Imports []string
@@ -48,7 +47,6 @@ func NewParser() *Parser {
 
 func (p *Parser) FileSet() *token.FileSet { return p.fset }
 
-// ParseFile parses a file and returns the AST, declarations, and metadata.
 func (p *Parser) ParseFile(filePath, src string) (*ast.File, []ParsedDecl, FileInfo, error) {
 	f, err := parser.ParseFile(p.fset, filePath, src, parser.ParseComments)
 	if err != nil {

@@ -13,10 +13,10 @@ import (
 
 type ImportGraph struct {
 	mu        sync.Mutex
-	OutEdges  map[string]map[string]bool // pkg -> set of deps
-	InEdges   map[string]map[string]bool // dep -> set of pkgs
+	OutEdges  map[string]map[string]bool
+	InEdges   map[string]map[string]bool
 	store     *storage.GraphStore
-	dirtyPkgs map[string]bool // pkgs with new import edges since last Flush
+	dirtyPkgs map[string]bool
 }
 
 func NewImportGraph() *ImportGraph {

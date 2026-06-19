@@ -267,7 +267,6 @@ func jsParseVarDecl(node *sitter.Node, src []byte) []ParsedDecl {
 }
 
 func jsExtractImportPath(node *sitter.Node, src []byte) string {
-	// The module path is in the last string child.
 	for i := int(node.ChildCount()) - 1; i >= 0; i-- {
 		child := node.Child(i)
 		if child.Type() == "string" {

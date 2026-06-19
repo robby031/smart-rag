@@ -14,9 +14,7 @@ func (e *Engine) impactQuery(_ context.Context, q Query, resp *Response) (*Respo
 		depth = 3
 	}
 	var impact []graph.ImpactResult
-	// A package path always contains "/"; function IDs (e.g. "engine.New", "New")
-	// may contain "." but never "/". The old heuristic routed "engine.New" to
-	// PackageImpact (import graph) because of the "." — which always returned empty.
+
 	if strings.Contains(q.Text, "/") {
 		impact = e.graph.PackageImpact(q.Text, depth)
 	} else {

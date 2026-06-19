@@ -119,7 +119,6 @@ func (gs *GraphStore) LoadMeta() (*GraphMeta, error) {
 	return &meta, nil
 }
 
-// Import graph persistence
 const importPrefix = "import:"
 
 func (gs *GraphStore) SaveImport(pkg, dep string) error {
@@ -134,14 +133,13 @@ func (gs *GraphStore) LoadImports() (map[string]map[string]bool, error) {
 	}
 	result := make(map[string]map[string]bool)
 	for key := range raw {
-		// key format: "import:pkg\x00dep"
 		rest := key[len(importPrefix):]
-		nul := strings.IndexByte(rest, '\x00')
-		if nul < 0 {
+		before, after, ok := strings.Cut(rest, "\x00")
+		if !ok {
 			continue
 		}
-		pkg := rest[:nul]
-		dep := rest[nul+1:]
+		pkg := before
+		dep := after
 		if result[pkg] == nil {
 			result[pkg] = make(map[string]bool)
 		}

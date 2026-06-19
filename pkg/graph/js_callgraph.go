@@ -6,8 +6,8 @@ import (
 
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/javascript"
-	ts "github.com/smacker/go-tree-sitter/typescript/typescript"
 	"github.com/smacker/go-tree-sitter/typescript/tsx"
+	ts "github.com/smacker/go-tree-sitter/typescript/typescript"
 )
 
 func (cg *CallGraph) ParseJSAST(filePath, src, pkg string) error {
@@ -110,7 +110,6 @@ func jsAddVarFuncs(cg *CallGraph, node *sitter.Node, src []byte, file, pkg strin
 	}
 }
 
-// jsWalkCalls finds all call_expression nodes inside a subtree and adds edges.
 func jsWalkCalls(cg *CallGraph, node *sitter.Node, src []byte, file, pkg, recv, name, callerID string) {
 	if node.Type() == "call_expression" {
 		fn := node.ChildByFieldName("function")
@@ -129,12 +128,6 @@ func jsWalkCalls(cg *CallGraph, node *sitter.Node, src []byte, file, pkg, recv, 
 	}
 }
 
-// jsResolveCallee turns a call function node into a best-effort callee ID.
-//
-//   - identifier: foo()          → pkg.foo
-//   - member: this.bar()         → pkg.(Class).bar  (if recv known)
-//   - member: obj.method()       → obj.method
-//   - member: a.b.c()            → a.b.c
 func jsResolveCallee(fn *sitter.Node, src []byte, pkg, recv string) string {
 	switch fn.Type() {
 	case "identifier":
@@ -164,7 +157,6 @@ func jsResolveCallee(fn *sitter.Node, src []byte, pkg, recv string) string {
 	return ""
 }
 
-// jsMemberChain builds the dotted access chain for a member_expression node.
 func jsMemberChain(node *sitter.Node, src []byte) string {
 	if node.Type() == "identifier" || node.Type() == "this" {
 		return string(node.Content(src))

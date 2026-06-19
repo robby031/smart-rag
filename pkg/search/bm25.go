@@ -63,7 +63,6 @@ func (b *BM25) Merge(locals []*LocalBM25) {
 		}
 	}
 
-	// Pre-allocate exact-size slices — zero wasted capacity after merge.
 	for term, n := range capacities {
 		b.termPosting[term] = make([]posting, 0, n)
 	}
@@ -119,7 +118,7 @@ func (b *BM25) Build() {
 	for i, l := range b.docLen {
 		b.lenNorm[i] = 1 - b.b + b.b*float64(l)/b.avgDocLen
 	}
-	b.docLen = nil // free memory after build
+	b.docLen = nil
 
 	pruneThreshold := b.docCount * 4 / 5
 	for term, posts := range b.termPosting {

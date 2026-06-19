@@ -34,13 +34,11 @@ func (g *Graph) Dependencies(pkg string) []string {
 type ImpactResult struct {
 	ID    string `json:"id"`
 	Depth int    `json:"depth"`
-	Dir   string `json:"dir"` // "upstream" (callers) or "downstream" (callees)
+	Dir   string `json:"dir"`
 	File  string `json:"file,omitempty"`
 	Line  int    `json:"line,omitempty"`
 }
 
-// ImpactForward traces all callees (downstream) up to maxDepth.
-// blast radius: "if I change this function, what else breaks?"
 func (g *Graph) ImpactForward(start string, maxDepth int) []ImpactResult {
 	visited := make(map[string]bool)
 	var results []ImpactResult
@@ -71,8 +69,6 @@ func (g *Graph) ImpactForward(start string, maxDepth int) []ImpactResult {
 	return results
 }
 
-// ImpactBackward traces all callers (upstream) up to maxDepth.
-// "what code depends on this function?"
 func (g *Graph) ImpactBackward(start string, maxDepth int) []ImpactResult {
 	visited := make(map[string]bool)
 	var results []ImpactResult
@@ -140,7 +136,6 @@ func (g *Graph) PackageImpact(pkg string, maxDepth int) []ImpactResult {
 	return results
 }
 
-// XrefResult holds all cross-references for a symbol.
 type XrefResult struct {
 	Symbol      string   `json:"symbol"`
 	Definitions []string `json:"definitions,omitempty"`
@@ -150,8 +145,6 @@ type XrefResult struct {
 	ImportedBy  []string `json:"imported_by,omitempty"`
 }
 
-// Xref resolves all cross-references for a given symbol or package.
-// It searches across call graph and import graph.
 func (g *Graph) Xref(symbol string) *XrefResult {
 	g.callGraph.mu.Lock()
 	defer g.callGraph.mu.Unlock()

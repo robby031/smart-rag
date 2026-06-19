@@ -23,7 +23,6 @@ func definitionTestEngine(t *testing.T) *Engine {
 
 	cs := storage.NewChunkStore(kv)
 
-	// Simulate struct chunk for "Engine"
 	if err := cs.PutAll([]storage.ChunkMeta{
 		{
 			ID:         "pkg/engine/engine.go:14-24",

@@ -47,7 +47,6 @@ func (s *SparseRetriever) Build() {
 		s.idf[term] = math.Log(1.0 + float64(s.docCount)/float64(df))
 	}
 
-	// Apply IDF weighting in-place, then compute per-doc L2 norms.
 	s.norms = make([]float64, s.docCount)
 	for term, posts := range s.termPosting {
 		idf := s.idf[term]
@@ -82,7 +81,6 @@ func (s *SparseRetriever) Search(query map[string]float64, topK int) []ScoredRes
 		return nil
 	}
 
-	// Accumulate dot products via posting lists — only visits docs that share a query term.
 	candidates := make(map[int32]float64)
 	for term, qv := range query {
 		for _, p := range s.termPosting[term] {

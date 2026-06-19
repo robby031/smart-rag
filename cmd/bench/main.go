@@ -57,7 +57,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Full or incremental index
 	var (
 		indexedCount int
 		peakHeapMB   float64
@@ -74,8 +73,7 @@ func main() {
 		if err := eng.IndexDir(context.Background(), absRepo, 0); err != nil {
 			log.Fatal(err)
 		}
-		// Two GC passes: first collects the main garbage, second collects
-		// finalizer-triggered objects and inter-generational references.
+
 		runtime.GC()
 		runtime.GC()
 		var memPeak runtime.MemStats
@@ -105,7 +103,6 @@ func main() {
 		projected = time.Duration(float64(elapsed) * 1000.0 / float64(indexedCount))
 	}
 
-	// Incremental re-index (1 file)
 	var incrElapsed time.Duration
 	if *fullReindex {
 		paths, _ := searcher.WalkFiles(absRepo, 0)
@@ -119,7 +116,6 @@ func main() {
 		}
 	}
 
-	// Query latency (search + definition + callers)
 	ctx := context.Background()
 	nChunks := s["chunks"]
 
@@ -135,13 +131,11 @@ func main() {
 		eng.Query(ctx, engine.Query{Type: engine.QueryCallers, Text: term}) //nolint
 	}, []string{"ParseFile", "IndexFile", "AddNode", "Flush"}, 20)
 
-	// Binary size
 	var binarySizeMB float64
 	if info, err := os.Stat(os.Args[0]); err == nil {
 		binarySizeMB = float64(info.Size()) / 1024 / 1024
 	}
 
-	// Output
 	fmt.Println()
 	fmt.Println("smart-rag performance matrix")
 	fmt.Println("================================")
@@ -155,11 +149,9 @@ func main() {
 	fmt.Println("--------------------------------")
 	fmt.Println("  Metric                      Target        Actual")
 
-	// Cold index
 	status := statusIcon(elapsed, 5*time.Second, 8*time.Second)
 	fmt.Printf("  Cold index (%4d files)  %s  < 5-8s       %s\n", goFiles, status, elapsed.Round(time.Millisecond))
 
-	// Projected 1k
 	projStatus := statusIcon(projected, 5*time.Second, 8*time.Second)
 	if indexedCount > 0 {
 		fmt.Printf("  Projected   (1000 files) %s  < 5-8s       ~%s  [from %d files]\n", projStatus, projected.Round(time.Millisecond), indexedCount)
@@ -167,7 +159,6 @@ func main() {
 		fmt.Printf("  Projected   (1000 files)     < 5-8s       n/a\n")
 	}
 
-	// Incremental
 	if incrElapsed > 0 {
 		incrStatus := statusIcon(incrElapsed, 1*time.Second, 2*time.Second)
 		fmt.Printf("  Incremental (    1 file) %s  < 1-2s       %s\n", incrStatus, incrElapsed.Round(time.Millisecond))
@@ -175,31 +166,26 @@ func main() {
 		fmt.Printf("  Incremental (    1 file)     < 1-2s       (run --full to measure)\n")
 	}
 
-	// Query latency – search
 	smed, sp95 := medianAndP95(searchLat)
 	sStatus := statusIcon(smed, 50*time.Millisecond, 80*time.Millisecond)
 	fmt.Printf("  Query search             %s  < 50-80ms    median %-8s  p95 %s  [%d chunks]\n",
 		sStatus, fmtDur(smed), fmtDur(sp95), nChunks)
 
-	// Query latency – definition
 	dmed, dp95 := medianAndP95(defLat)
 	dStatus := statusIcon(dmed, 50*time.Millisecond, 80*time.Millisecond)
 	fmt.Printf("  Query find-def           %s  < 50-80ms    median %-8s  p95 %s  [%d chunks]\n",
 		dStatus, fmtDur(dmed), fmtDur(dp95), nChunks)
 
-	// Query latency – callers
 	cmed, cp95 := medianAndP95(callerLat)
 	cStatus := statusIcon(cmed, 50*time.Millisecond, 80*time.Millisecond)
 	fmt.Printf("  Query callers            %s  < 50-80ms    median %-8s  p95 %s  [%d chunks]\n",
 		cStatus, fmtDur(cmed), fmtDur(cp95), nChunks)
 
-	// Binary size
 	if binarySizeMB > 0 {
 		bStatus := statusIcon(time.Duration(binarySizeMB*1000)*time.Millisecond, 15000*time.Millisecond, 20000*time.Millisecond)
 		fmt.Printf("  Binary size              %s  < 15-20 MB   %.1f MB\n", bStatus, binarySizeMB)
 	}
 
-	// RAM
 	if peakHeapMB > 0 {
 		ramStatus := statusIcon(time.Duration(peakHeapMB*1000)*time.Millisecond, 80000*time.Millisecond, 120000*time.Millisecond)
 		fmt.Printf("  RAM during index         %s  < 80-120 MB  %.1f MB heap delta\n", ramStatus, peakHeapMB)
