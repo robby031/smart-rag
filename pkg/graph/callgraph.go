@@ -166,3 +166,8 @@ func (cg *CallGraph) Stats() map[string]int {
 		"edges": cg.EdgeCount(),
 	}
 }
+
+func (cg *CallGraph) HasNode(id string) bool {
+	_, ok := cg.Nodes[id]
+	return ok
+}
