@@ -20,6 +20,7 @@ const (
 	QueryFunctionFlow
 	QueryTypeProvenance
 	QueryVariableSearch
+	QueryDynamicFlow
 )
 
 type Query struct {
