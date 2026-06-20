@@ -30,12 +30,12 @@ func (idx *FlowIndex) BuildFromFlowGraph(fg *FlowGraph) {
 	idx.chains = make(map[string]*DefUseChain)
 	idx.typeNodes = make(map[string]*TypeFlowNode)
 
-	for name, v := range fg.Variables {
-		idx.byName[name] = append(idx.byName[name], v)
+	for _, v := range fg.Variables {
+		idx.byName[v.Name] = append(idx.byName[v.Name], v)
 		if v.Type != "" {
 			idx.byType[v.Type] = append(idx.byType[v.Type], v)
 		}
-		idx.byFile[v.File] = append(idx.byFile[v.File], name)
+		idx.byFile[v.File] = append(idx.byFile[v.File], v.Name)
 	}
 
 	for defID, chain := range fg.DefUseMap {
