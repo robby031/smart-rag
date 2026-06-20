@@ -174,8 +174,8 @@ func matchesFunction(fn *ast.FuncDecl, pattern string) bool {
 		return true
 	}
 
-	if strings.HasPrefix(pattern, "func ") {
-		namePart := strings.TrimPrefix(pattern, "func ")
+	if after, ok := strings.CutPrefix(pattern, "func "); ok {
+		namePart := after
 		if strings.HasPrefix(namePart, "(") {
 			parts := strings.SplitN(namePart, ").", 2)
 			if len(parts) == 2 {
