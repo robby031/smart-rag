@@ -38,6 +38,9 @@ func (s *Syncer) Sync(ctx context.Context) (int, int, error) {
 	}
 
 	if len(changed) == 0 && len(deleted) == 0 {
+		if err := s.engine.FinalizeIndex(); err != nil {
+			return 0, 0, fmt.Errorf("finalize: %w", err)
+		}
 		return 0, 0, nil
 	}
 
