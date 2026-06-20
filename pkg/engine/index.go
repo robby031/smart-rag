@@ -28,6 +28,15 @@ func (e *Engine) indexFileWith(
 	addDoc func(map[string]int, string),
 	chunkSink func([]storage.ChunkMeta) error,
 ) error {
+	return e.indexFileInternal(filePath, src, addDoc, chunkSink, true)
+}
+
+func (e *Engine) indexFileInternal(
+	filePath, src string,
+	addDoc func(map[string]int, string),
+	chunkSink func([]storage.ChunkMeta) error,
+	skipFlowDelete bool,
+) error {
 	generated := isGeneratedSource(src)
 	sink := chunkSink
 	if generated {
@@ -41,20 +50,21 @@ func (e *Engine) indexFileWith(
 		}
 	}
 	if indexer.IsJSLike(filePath) {
-		return e.indexJSFileWith(filePath, src, addDoc, sink)
+		return e.indexJSFileInternal(filePath, src, addDoc, sink, skipFlowDelete)
 	}
-	return e.indexGoFileWith(filePath, src, addDoc, sink)
+	return e.indexGoFileInternal(filePath, src, addDoc, sink, skipFlowDelete)
 }
 
-func (e *Engine) indexGoFileWith(
+func (e *Engine) indexGoFileInternal(
 	filePath, src string,
 	addDoc func(map[string]int, string),
 	chunkSink func([]storage.ChunkMeta) error,
+	skipFlowDelete bool,
 ) error {
 	if err := e.chunkStore.DeleteByFile(filePath); err != nil {
 		return fmt.Errorf("delete stale chunks %s: %w", filePath, err)
 	}
-	if e.flowStore != nil {
+	if e.flowStore != nil && !skipFlowDelete {
 		e.flowStore.DeleteByFile(filePath)
 	}
 
@@ -101,25 +111,8 @@ func (e *Engine) indexGoFileWith(
 		builder := dataflow.NewFlowGraphBuilder(e.callGraph)
 		fg, err := builder.BuildFromAST(astFile, e.parser.FileSet(), filePath, fileInfo.Package)
 		if err == nil {
-			for _, v := range fg.Variables {
-				if err := e.flowStore.SaveVariable(v); err != nil {
-					return fmt.Errorf("save flow variable %s: %w", v.Name, err)
-				}
-			}
-			for _, chain := range fg.DefUseMap {
-				if err := e.flowStore.SaveChain(chain); err != nil {
-					return fmt.Errorf("save flow chain: %w", err)
-				}
-			}
-			for _, node := range fg.TypeNodes {
-				if err := e.flowStore.SaveTypeNode(node); err != nil {
-					return fmt.Errorf("save flow type node: %w", err)
-				}
-			}
-			for _, edge := range fg.Edges {
-				if err := e.flowStore.SaveEdge(&edge); err != nil {
-					return fmt.Errorf("save flow edge: %w", err)
-				}
+			if err := e.flowStore.BatchSaveFlowGraph(fg); err != nil {
+				return fmt.Errorf("batch save flow graph %s: %w", filePath, err)
 			}
 		}
 	}
@@ -136,15 +129,16 @@ func (e *Engine) indexGoFileWith(
 	return nil
 }
 
-func (e *Engine) indexJSFileWith(
+func (e *Engine) indexJSFileInternal(
 	filePath, src string,
 	addDoc func(map[string]int, string),
 	chunkSink func([]storage.ChunkMeta) error,
+	skipFlowDelete bool,
 ) error {
 	if err := e.chunkStore.DeleteByFile(filePath); err != nil {
 		return fmt.Errorf("delete stale chunks %s: %w", filePath, err)
 	}
-	if e.flowStore != nil {
+	if e.flowStore != nil && !skipFlowDelete {
 		e.flowStore.DeleteByFile(filePath)
 	}
 
@@ -190,10 +184,8 @@ func (e *Engine) indexJSFileWith(
 		jsExtractor := dataflow.NewJSDefUseExtractor()
 		chains, err := jsExtractor.ExtractDefUse(src, filePath, fileInfo.Package)
 		if err == nil {
-			for _, chain := range chains {
-				if err := e.flowStore.SaveChain(chain); err != nil {
-					return fmt.Errorf("save js flow chain: %w", err)
-				}
+			if err := e.flowStore.BatchSaveJSChains(chains); err != nil {
+				return fmt.Errorf("batch save js flow chains: %w", err)
 			}
 		}
 	}
@@ -215,6 +207,11 @@ func (e *Engine) IndexDir(_ context.Context, repoDir string, workers int) error 
 	paths, err := searcher.WalkFiles(repoDir, 0)
 	if err != nil {
 		return fmt.Errorf("walk %s: %w", repoDir, err)
+	}
+
+	// Clear all flow data once upfront — avoids 5 prefix scans per file.
+	if e.flowStore != nil {
+		e.flowStore.DeleteAllFlow()
 	}
 
 	work := make(chan string, len(paths))
@@ -271,7 +268,7 @@ func (e *Engine) IndexDir(_ context.Context, repoDir string, workers int) error 
 				relPath, _ := filepath.Rel(repoDir, path)
 
 				e.indexMu.Lock()
-				ierr := e.indexFileWith(relPath, string(src), e.bm25.AddDocument, sink)
+				ierr := e.indexFileInternal(relPath, string(src), e.bm25.AddDocument, sink, false)
 				e.indexMu.Unlock()
 
 				if ierr != nil {
