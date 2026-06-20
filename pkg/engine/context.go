@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -328,11 +329,12 @@ func dedupeStrings(in []string) []string {
 }
 
 func extractPkg(filePath string) string {
-	parts := strings.SplitN(filePath, "/", 3)
-	if len(parts) >= 2 && parts[0] == "pkg" {
-		return parts[1]
+	dir := filepath.Dir(filePath)
+	pkg := filepath.Base(dir)
+	if pkg == "." || pkg == ".." {
+		return "main"
 	}
-	return "main"
+	return pkg
 }
 
 func (e *Engine) readSnippet(_ context.Context, q Query, resp *Response) (*Response, error) {
