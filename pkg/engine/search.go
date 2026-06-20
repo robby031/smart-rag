@@ -48,8 +48,11 @@ func (e *Engine) search(_ context.Context, q Query, resp *Response) (*Response, 
 		score, details := rankSearchResult(q, tokens, sr.Score, chunk, queryReachable, e.pruningEnabled())
 
 		if e.flowIndex != nil {
-			vars := e.flowIndex.ByVariableName(q.Text)
-			if len(vars) > 0 {
+			for term := range tokens {
+				vars := e.flowIndex.ByVariableName(term)
+				if len(vars) == 0 {
+					continue
+				}
 				for _, v := range vars {
 					if v.File == chunk.FilePath && v.DefLine >= chunk.StartLine && v.DefLine <= chunk.EndLine {
 						score += 0.5
