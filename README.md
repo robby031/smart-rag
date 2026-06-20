@@ -166,14 +166,23 @@ Run `make install` or add to your MCP client config:
 
 ### Available MCP Tools
 
-- `rag_status` — health check for version, index, graph, BM25, paths, and last sync
-- `search_code` — ranked BM25 code search with stable tie-breakers and filters
-- `find_definition` — go-to-definition for a symbol (Go and JS/TS: functions, classes, types, enums, interfaces)
-- `find_references` — find all usages of a symbol
-- `get_callers` / `get_callees` — call graph navigation (Go: `pkg.Func`; JS/TS: `module.func` or `module.(Class).method`)
-- `impact_analysis` — analyze change impact across the call graph and import graph
-- `context_pack` — retrieve relevant code context
-- `read_snippet` — read file snippet by path and line range
+| Tool | Description |
+|---|---|
+| `rag_status` | Health check — version, index, graph, BM25, paths, and last sync |
+| `reindex` | Trigger incremental reindex without restarting the server. Call this after a large refactor or when search results seem stale |
+| `search_code` | Ranked BM25 code search with stable tie-breakers, language filter, and path filter |
+| `find_definition` | Go-to-definition for a symbol (Go and JS/TS: functions, classes, types, enums, interfaces) |
+| `find_references` | Find all usages of a symbol across the codebase |
+| `get_callers` | List all functions that call the given function |
+| `get_callees` | List all functions called by the given function |
+| `impact_analysis` | Analyze blast radius of changing a function or package across the call/import graph |
+| `get_context_pack` | Retrieve full code context for a chunk, budget-limited for AI consumption |
+| `read_snippet` | Read a file snippet by path and line range (e.g. `main.go:10-25`) |
+| `trace_variable` | Trace a variable through its def-use chain — where defined, modified, and used |
+| `function_dataflow` | Show data flow inside a function: inputs, internal variables, and return values |
+| `type_flow` | Trace how a type is used across the codebase (forward and backward) |
+| `variable_search` | Semantic search for variables — exact, fuzzy, or type-based |
+| `trace_runtime` | Show runtime trace data for a function or variable collected via test instrumentation |
 
 ### Make targets
 
@@ -190,7 +199,7 @@ make clean        # Remove artifacts
 - `REPO=path` — source repository (default: `.`)
 - `DB=path` — database directory (default: `./rag-data`)
 - `PRUNING=off|soft|hard` — index pruning mode (default: `soft`)
-- `VERSION=x.y.z` — binary version (default: `0.4.6`)
+- `VERSION=x.y.z` — binary version (default: `0.4.7`)
 
 `--pruning` maps to the index pruning setting `index.pruning.mode`.
 
@@ -207,36 +216,36 @@ Benchmarked smart-rag
 ```
 smart-rag performance benchmark
 ═══════════════════════════════════════════════════════════════
-  Version      : 0.4.6
+  Version      : 0.4.7
   Repository   : /Users/bagusdwiharianto/Development/ai/smart-rag
-  Source files : 87  (15576 lines)
+  Source files : 87  (15642 lines)
   Pruning      : soft
 
   Index Stats
   ───────────────────────────────────────────────────────────
-  Chunks       : 838
-  Graph nodes  : 647
-  Graph edges  : 2725
+  Chunks       : 843
+  Graph nodes  : 650
+  Graph edges  : 2734
 
   Indexing Performance
   ───────────────────────────────────────────────────────────
-  Full index         : 1.574s        (87 files)
-  Per file (avg)     : 18.091ms
-  Incremental 1-file : 91ms
-  No-op sync         : 15ms
+  Full index         : 1.704s        (87 files)
+  Per file (avg)     : 19.583ms
+  Incremental 1-file : 119ms
+  No-op sync         : 13ms
   Heap delta         : 3.7 MB
   Binary size        : 10.3 MB
 
   Query Latency
   ───────────────────────────────────────────────────────────
   Operation            Queries   Median     P95        P99        Min        Max
-  search                    450   13ms       14ms       14ms       522µs      14ms
-  search+filter             150   13ms       14ms       14ms       13ms       14ms
+  search                    450   13ms       13ms       14ms       496µs      27ms
+  search+filter             150   13ms       14ms       14ms       12ms       14ms
   find_definition           300   4ms        4ms        4ms        3ms        4ms
   find_references           240   1ms        2ms        2ms        1ms        2ms
-  get_callers               240   < 1µs      < 1µs      < 1µs      < 1µs      1µs
+  get_callers               240   < 1µs      < 1µs      < 1µs      < 1µs      2µs
   get_callees               240   < 1µs      < 1µs      < 1µs      < 1µs      < 1µs
   impact_analysis           120   < 1µs      < 1µs      1µs        < 1µs      1µs
-  get_context_pack          160   5ms        5ms        6ms        4ms        6ms
-  read_snippet              300   57µs       185µs      190µs      22µs       194µs
+  get_context_pack          160   5ms        5ms        5ms        4ms        5ms
+  read_snippet              300   42µs       104µs      155µs      9µs        204µs
 ```
