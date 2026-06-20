@@ -97,22 +97,30 @@ func (e *Engine) indexGoFileWith(
 		return fmt.Errorf("store chunks: %w", err)
 	}
 
-	if e.flowGraph != nil && e.flowStore != nil {
-		fg, err := e.flowGraph.BuildFromAST(astFile, e.parser.FileSet(), filePath, fileInfo.Package)
+	if e.flowStore != nil {
+		builder := dataflow.NewFlowGraphBuilder(e.callGraph)
+		fg, err := builder.BuildFromAST(astFile, e.parser.FileSet(), filePath, fileInfo.Package)
 		if err == nil {
 			for _, v := range fg.Variables {
-				e.flowStore.SaveVariable(v)
+				if err := e.flowStore.SaveVariable(v); err != nil {
+					return fmt.Errorf("save flow variable %s: %w", v.Name, err)
+				}
 			}
 			for _, chain := range fg.DefUseMap {
-				e.flowStore.SaveChain(chain)
+				if err := e.flowStore.SaveChain(chain); err != nil {
+					return fmt.Errorf("save flow chain: %w", err)
+				}
 			}
 			for _, node := range fg.TypeNodes {
-				e.flowStore.SaveTypeNode(node)
+				if err := e.flowStore.SaveTypeNode(node); err != nil {
+					return fmt.Errorf("save flow type node: %w", err)
+				}
 			}
 			for _, edge := range fg.Edges {
-				e.flowStore.SaveEdge(&edge)
+				if err := e.flowStore.SaveEdge(&edge); err != nil {
+					return fmt.Errorf("save flow edge: %w", err)
+				}
 			}
-			e.flowIndex.BuildFromFlowGraph(fg)
 		}
 	}
 
@@ -183,7 +191,9 @@ func (e *Engine) indexJSFileWith(
 		chains, err := jsExtractor.ExtractDefUse(src, filePath, fileInfo.Package)
 		if err == nil {
 			for _, chain := range chains {
-				e.flowStore.SaveChain(chain)
+				if err := e.flowStore.SaveChain(chain); err != nil {
+					return fmt.Errorf("save js flow chain: %w", err)
+				}
 			}
 		}
 	}
@@ -197,8 +207,6 @@ func (e *Engine) indexJSFileWith(
 }
 
 func (e *Engine) IndexDir(_ context.Context, repoDir string, workers int) error {
-	e.indexMu.Lock()
-	defer e.indexMu.Unlock()
 	e.indexDirty = true
 
 	if workers <= 0 {
@@ -261,14 +269,18 @@ func (e *Engine) IndexDir(_ context.Context, repoDir string, workers int) error 
 					return
 				}
 				relPath, _ := filepath.Rel(repoDir, path)
-				if err := e.indexFileWith(relPath, string(src), e.bm25.AddDocument, sink); err != nil {
 
-					if strings.HasPrefix(err.Error(), "parse:") {
+				e.indexMu.Lock()
+				ierr := e.indexFileWith(relPath, string(src), e.bm25.AddDocument, sink)
+				e.indexMu.Unlock()
+
+				if ierr != nil {
+					if strings.HasPrefix(ierr.Error(), "parse:") {
 						continue
 					}
 					mu.Lock()
 					if firstErr == nil {
-						firstErr = fmt.Errorf("index %s: %w", path, err)
+						firstErr = fmt.Errorf("index %s: %w", path, ierr)
 					}
 					mu.Unlock()
 					return
@@ -324,7 +336,7 @@ func (e *Engine) FinalizeIndex() error {
 
 		vars, _ := e.flowStore.LoadAllVariables()
 		for _, v := range vars {
-			fg.Variables[v.Name] = v
+			fg.Variables[v.Pkg+"."+v.Name] = v
 		}
 
 		defs, _ := e.flowStore.LoadAllDefs()
@@ -339,6 +351,16 @@ func (e *Engine) FinalizeIndex() error {
 
 		edges, _ := e.flowStore.LoadAllEdges()
 		fg.Edges = edges
+
+		chains, _ := e.flowStore.LoadAllChains()
+		for _, ch := range chains {
+			fg.DefUseMap[ch.Def.ID] = ch
+		}
+
+		typeNodes, _ := e.flowStore.LoadAllTypeNodes()
+		for _, tn := range typeNodes {
+			fg.TypeNodes[tn.TypeName] = tn
+		}
 
 		e.flowIndex.BuildFromFlowGraph(fg)
 	}
