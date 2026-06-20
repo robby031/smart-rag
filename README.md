@@ -190,7 +190,7 @@ make clean        # Remove artifacts
 - `REPO=path` — source repository (default: `.`)
 - `DB=path` — database directory (default: `./rag-data`)
 - `PRUNING=off|soft|hard` — index pruning mode (default: `soft`)
-- `VERSION=x.y.z` — binary version (default: `0.4.5`)
+- `VERSION=x.y.z` — binary version (default: `0.4.6`)
 
 `--pruning` maps to the index pruning setting `index.pruning.mode`.
 
@@ -207,36 +207,36 @@ Benchmarked smart-rag
 ```
 smart-rag performance benchmark
 ═══════════════════════════════════════════════════════════════
-  Version      : 0.4.5
+  Version      : 0.4.6
   Repository   : /Users/bagusdwiharianto/Development/ai/smart-rag
-  Source files : 51  (9154 lines)
+  Source files : 87  (15576 lines)
   Pruning      : soft
 
   Index Stats
   ───────────────────────────────────────────────────────────
-  Chunks       : 492
-  Graph nodes  : 374
-  Graph edges  : 1542
+  Chunks       : 838
+  Graph nodes  : 647
+  Graph edges  : 2725
 
   Indexing Performance
   ───────────────────────────────────────────────────────────
-  Full index         : 166ms         (51 files)
-  Per file (avg)     : 3.256ms
-  Incremental 1-file : 47ms
-  No-op sync         : 30ms
-  Heap delta         : 2.8 MB
-  Binary size        : 10.2 MB
+  Full index         : 1.574s        (87 files)
+  Per file (avg)     : 18.091ms
+  Incremental 1-file : 91ms
+  No-op sync         : 15ms
+  Heap delta         : 3.7 MB
+  Binary size        : 10.3 MB
 
   Query Latency
   ───────────────────────────────────────────────────────────
   Operation            Queries   Median     P95        P99        Min        Max
-  search                    450   5ms        6ms        6ms        292µs      7ms
-  search+filter             150   6ms        6ms        12ms       483µs      14ms
-  find_definition           300   2ms        2ms        2ms        2ms        3ms
-  find_references           240   587µs      776µs      790µs      531µs      809µs
-  get_callers               240   < 1µs      < 1µs      < 1µs      < 1µs      < 1µs
+  search                    450   13ms       14ms       14ms       522µs      14ms
+  search+filter             150   13ms       14ms       14ms       13ms       14ms
+  find_definition           300   4ms        4ms        4ms        3ms        4ms
+  find_references           240   1ms        2ms        2ms        1ms        2ms
+  get_callers               240   < 1µs      < 1µs      < 1µs      < 1µs      1µs
   get_callees               240   < 1µs      < 1µs      < 1µs      < 1µs      < 1µs
-  impact_analysis           120   < 1µs      < 1µs      < 1µs      < 1µs      < 1µs
-  get_context_pack          160   3ms        3ms        3ms        3ms        3ms
-  read_snippet              300   43µs       124µs      210µs      14µs       297µs
+  impact_analysis           120   < 1µs      < 1µs      1µs        < 1µs      1µs
+  get_context_pack          160   5ms        5ms        6ms        4ms        6ms
+  read_snippet              300   57µs       185µs      190µs      22µs       194µs
 ```
