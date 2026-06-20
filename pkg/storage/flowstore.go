@@ -132,6 +132,82 @@ func (fs *FlowStore) SaveEdge(edge *dataflow.DataFlowEdge) error {
 	return fs.kv.Put([]byte(key), data)
 }
 
+func (fs *FlowStore) BatchSaveFlowGraph(fg *dataflow.FlowGraph) error {
+	var pairs []KVPair
+
+	for _, v := range fg.Variables {
+		data, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Errorf("marshal variable: %w", err)
+		}
+		pairs = append(pairs, KVPair{Key: []byte(flowVarPrefix + v.Pkg + "." + v.Name), Value: data})
+	}
+
+	for _, chain := range fg.DefUseMap {
+		data, err := json.Marshal(chain)
+		if err != nil {
+			return fmt.Errorf("marshal chain: %w", err)
+		}
+		pairs = append(pairs, KVPair{Key: []byte(flowChainPrefix + chain.Def.ID), Value: data})
+	}
+
+	for _, node := range fg.TypeNodes {
+		data, err := json.Marshal(node)
+		if err != nil {
+			return fmt.Errorf("marshal type node: %w", err)
+		}
+		pairs = append(pairs, KVPair{Key: []byte(flowTypePrefix + node.TypeName), Value: data})
+	}
+
+	for i := range fg.Edges {
+		edge := &fg.Edges[i]
+		data, err := json.Marshal(edge)
+		if err != nil {
+			return fmt.Errorf("marshal edge: %w", err)
+		}
+		key := fmt.Sprintf("%s%s\x00%s", flowEdgePrefix, edge.From, edge.To)
+		pairs = append(pairs, KVPair{Key: []byte(key), Value: data})
+	}
+
+	if len(pairs) == 0 {
+		return nil
+	}
+	return fs.kv.BatchPut(pairs)
+}
+
+func (fs *FlowStore) BatchSaveJSChains(chains []*dataflow.DefUseChain) error {
+	if len(chains) == 0 {
+		return nil
+	}
+	pairs := make([]KVPair, 0, len(chains))
+	for _, chain := range chains {
+		data, err := json.Marshal(chain)
+		if err != nil {
+			return fmt.Errorf("marshal chain: %w", err)
+		}
+		pairs = append(pairs, KVPair{Key: []byte(flowChainPrefix + chain.Def.ID), Value: data})
+	}
+	return fs.kv.BatchPut(pairs)
+}
+
+func (fs *FlowStore) DeleteAllFlow() error {
+	prefixes := [][]byte{
+		[]byte(flowVarPrefix),
+		[]byte(flowDefPrefix),
+		[]byte(flowUsePrefix),
+		[]byte(flowChainPrefix),
+		[]byte(flowEdgePrefix),
+		[]byte(flowTypePrefix),
+		[]byte(flowFuncPrefix),
+	}
+	for _, prefix := range prefixes {
+		if err := fs.kv.DeleteWithPrefix(prefix); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (fs *FlowStore) SaveFuncVariables(funcID string, varNames []string) error {
 	data, err := json.Marshal(varNames)
 	if err != nil {
