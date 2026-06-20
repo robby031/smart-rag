@@ -306,6 +306,12 @@ func (e *Engine) FinalizeIndex() error {
 		return nil
 	}
 
+	// Incremental index adds new docs to BM25 but cannot remove stale ones.
+	// Reset and rebuild from KV store so old entries don't pollute results.
+	if e.indexDirty && !needsWarmup {
+		e.bm25.Reset()
+		needsWarmup = true
+	}
 	if needsWarmup {
 		if err := e.warmupBM25(); err != nil {
 			return fmt.Errorf("warmup BM25: %w", err)

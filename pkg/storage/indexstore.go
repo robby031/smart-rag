@@ -14,9 +14,10 @@ const (
 )
 
 type IndexMeta struct {
-	LastUpdated time.Time `json:"last_updated"`
-	FileCount   int       `json:"file_count"`
-	TotalChunks int       `json:"total_chunks"`
+	LastUpdated   time.Time `json:"last_updated"`
+	FileCount     int       `json:"file_count"`
+	TotalChunks   int       `json:"total_chunks"`
+	IndexedCommit string    `json:"indexed_commit,omitempty"`
 }
 
 type IndexStore struct {

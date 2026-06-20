@@ -10,19 +10,24 @@ import (
 	"github.com/robby031/smart-rag/pkg/engine"
 )
 
+// SyncFunc triggers an incremental reindex of the repository.
+type SyncFunc func(ctx context.Context) (indexed, deleted int, err error)
+
 type SmartRAGServer struct {
 	mcpServer *server.MCPServer
 	engine    *engine.Engine
+	syncFn    SyncFunc
 }
 
-func NewServer(e *engine.Engine, version ...string) *SmartRAGServer {
-	serverVersion := "dev"
-	if len(version) > 0 && version[0] != "" {
-		serverVersion = version[0]
+func NewServer(e *engine.Engine, version string, syncFn SyncFunc) *SmartRAGServer {
+	serverVersion := version
+	if serverVersion == "" {
+		serverVersion = "dev"
 	}
 	s := &SmartRAGServer{
 		mcpServer: server.NewMCPServer("smart-rag", serverVersion),
 		engine:    e,
+		syncFn:    syncFn,
 	}
 	s.registerTools()
 	return s
@@ -36,6 +41,12 @@ func (s *SmartRAGServer) registerTools() {
 	s.mcpServer.AddTool(mcp.NewTool("rag_status",
 		mcp.WithDescription("Show smart-rag health, index, graph, BM25, runtime path, and last sync status."),
 	), s.handleRAGStatus)
+
+	if s.syncFn != nil {
+		s.mcpServer.AddTool(mcp.NewTool("reindex",
+			mcp.WithDescription("Trigger an incremental reindex of the repository. Call this after large refactors or when search results seem stale. Returns how many files were indexed and removed."),
+		), s.handleReindex)
+	}
 
 	s.mcpServer.AddTool(mcp.NewTool("search_code",
 		mcp.WithDescription("Ranked BM25 code search with deterministic tie-breakers, lightweight boosts, and language/path filters."),
@@ -122,6 +133,14 @@ func (s *SmartRAGServer) registerTools() {
 
 func (s *SmartRAGServer) handleRAGStatus(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText(formatStatus(s.engine.Status())), nil
+}
+
+func (s *SmartRAGServer) handleReindex(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	indexed, deleted, err := s.syncFn(ctx)
+	if err != nil {
+		return mcp.NewToolResultText(fmt.Sprintf("reindex failed: %v", err)), nil
+	}
+	return mcp.NewToolResultText(fmt.Sprintf("Reindex complete: %d files indexed, %d removed.", indexed, deleted)), nil
 }
 
 func (s *SmartRAGServer) handleSearchCode(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

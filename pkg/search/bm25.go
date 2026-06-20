@@ -184,3 +184,15 @@ func (b *BM25) IsEmpty() bool {
 	defer b.mu.Unlock()
 	return b.docCount == 0
 }
+
+func (b *BM25) Reset() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.docCount = 0
+	b.avgDocLen = 0
+	b.docLen = nil
+	b.idf = nil
+	b.DocIDs = nil
+	b.lenNorm = nil
+	b.termPosting = make(map[string][]posting)
+}

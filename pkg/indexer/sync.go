@@ -69,7 +69,10 @@ func (s *Syncer) Sync(ctx context.Context) (int, int, error) {
 		return indexed, len(deleted), fmt.Errorf("finalize: %w", err)
 	}
 
-	meta := &storage.IndexMeta{LastUpdated: time.Now()}
+	meta := &storage.IndexMeta{
+		LastUpdated:   time.Now(),
+		IndexedCommit: s.currentHEAD(),
+	}
 	if m, err := s.indexStore.LoadMeta(); err == nil {
 		meta.FileCount = m.FileCount + indexed - len(deleted)
 	} else {
@@ -89,16 +92,33 @@ func (s *Syncer) detectChanges() (changed, deleted []string, err error) {
 	return s.hashCompare()
 }
 
-func (s *Syncer) gitDiff() (changed, deleted []string, err error) {
-	headCmd := exec.Command("git", "-C", s.repoDir, "rev-parse", "HEAD")
-	if _, err := headCmd.Output(); err != nil {
-		return nil, nil, fmt.Errorf("not a git repo: %w", err)
+func (s *Syncer) currentHEAD() string {
+	out, err := exec.Command("git", "-C", s.repoDir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return ""
 	}
-	if _, err := s.indexStore.LoadMeta(); err != nil {
+	return strings.TrimSpace(string(out))
+}
+
+func (s *Syncer) gitDiff() (changed, deleted []string, err error) {
+	head := s.currentHEAD()
+	if head == "" {
+		return nil, nil, fmt.Errorf("not a git repo")
+	}
+
+	meta, metaErr := s.indexStore.LoadMeta()
+	if metaErr != nil {
+		// Never indexed before — index everything.
 		return s.allFiles(), nil, nil
 	}
 
-	diffCmd := exec.Command("git", "-C", s.repoDir, "diff", "--name-only", "HEAD~1", "HEAD")
+	// Diff from last indexed commit to current HEAD so multi-commit refactors are caught.
+	fromCommit := meta.IndexedCommit
+	if fromCommit == "" {
+		fromCommit = head + "~1"
+	}
+
+	diffCmd := exec.Command("git", "-C", s.repoDir, "diff", "--name-only", fromCommit, head)
 	diffOut, err := diffCmd.Output()
 	if err != nil {
 		return s.allFiles(), nil, nil

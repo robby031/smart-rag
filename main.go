@@ -71,7 +71,21 @@ func main() {
 		DBDir:   absDB,
 	})
 
-	server := mcp.NewServer(eng, version)
+	syncer := indexer.NewSyncer(eng, indexStore, absRepo)
+	syncFn := func(ctx context.Context) (int, int, error) {
+		indexed, deleted, err := syncer.Sync(ctx)
+		if err != nil {
+			return 0, 0, err
+		}
+		eng.RecordIndexSummary(engine.IndexSummary{
+			Mode:    "incremental",
+			Indexed: indexed,
+			Deleted: deleted,
+		})
+		return indexed, deleted, nil
+	}
+
+	server := mcp.NewServer(eng, version, syncFn)
 	fmt.Fprintln(os.Stderr, "Starting smart-rag MCP server...")
 
 	go func() {
@@ -92,18 +106,12 @@ func main() {
 				Deleted: 0,
 			})
 		} else {
-			syncer := indexer.NewSyncer(eng, indexStore, absRepo)
-			indexed, deleted, err := syncer.Sync(context.Background())
+			indexed, deleted, err := syncFn(context.Background())
 			if err != nil {
 				log.Printf("sync: %v", err)
 				return
 			}
 			fmt.Fprintf(os.Stderr, "Incremental sync: %d files indexed, %d removed\n", indexed, deleted)
-			eng.RecordIndexSummary(engine.IndexSummary{
-				Mode:    "incremental",
-				Indexed: indexed,
-				Deleted: deleted,
-			})
 		}
 		fmt.Fprintln(os.Stderr, "Indexing complete.")
 	}()
