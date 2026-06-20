@@ -9,15 +9,11 @@ PRUNING  ?= soft
 .PHONY: build bench run run-full install test test-race vet bench-run \
         docker-build docker-run docker-index docker-restart clean help
 
-# ── Build ────────────────────────────────────────────────────────────
-
 build:
 	go build -ldflags="-s -w -X main.version=$(VERSION)" -o $(BINARY) .
 
 bench:
 	go build -ldflags="-s -w -X main.version=$(VERSION)" -o $(BENCH) ./cmd/bench
-
-# ── Run ──────────────────────────────────────────────────────────────
 
 run: build
 	./$(BINARY) --repo "$(REPO)" --db "$(DB)" --pruning "$(PRUNING)"
@@ -28,8 +24,6 @@ run-full: build
 bench-run: bench
 	./$(BENCH) --repo "$(REPO)" --pruning "$(PRUNING)"
 
-# ── Test ─────────────────────────────────────────────────────────────
-
 test:
 	go test ./...
 
@@ -39,12 +33,8 @@ test-race:
 vet:
 	go vet ./...
 
-# ── Install ──────────────────────────────────────────────────────────
-
 install:
 	go install -ldflags="-s -w -X main.version=$(VERSION)" .
-
-# ── Docker ───────────────────────────────────────────────────────────
 
 docker-build:
 	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE):latest .
@@ -61,13 +51,9 @@ docker-index:
 docker-restart: docker-build
 	REPO_DIR=$(REPO) docker compose run --rm index
 
-# ── Clean ────────────────────────────────────────────────────────────
-
 clean:
 	rm -f $(BINARY) $(BENCH)
 	rm -rf $(DB)
-
-# ── Help ─────────────────────────────────────────────────────────────
 
 help:
 	@echo "Usage: make <target> [VAR=value]"
