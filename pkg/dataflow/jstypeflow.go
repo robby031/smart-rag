@@ -36,11 +36,11 @@ func (t *JSTypeFlowTracker) ExtractTypes(src []byte, filePath, pkg string) error
 	}
 
 	root := tree.RootNode()
-	t.walkNode(root, src, pkg)
+	t.walkNode(root, src, pkg, filePath)
 	return nil
 }
 
-func (t *JSTypeFlowTracker) walkNode(node *sitter.Node, src []byte, pkg string) {
+func (t *JSTypeFlowTracker) walkNode(node *sitter.Node, src []byte, pkg, filePath string) {
 	switch node.Type() {
 	case "interface_declaration":
 		nameNode := childOfType(node, "type_identifier")
@@ -48,7 +48,7 @@ func (t *JSTypeFlowTracker) walkNode(node *sitter.Node, src []byte, pkg string) 
 			name := string(nameNode.Content(src))
 			line := int(node.StartPoint().Row) + 1
 			tn := t.getOrCreate(name)
-			tn.DefFile = filepath.Base("")
+			tn.DefFile = filepath.Base(filePath)
 			tn.DefLine = line
 			t.walkTypeBody(node, src, name)
 		}
@@ -59,7 +59,7 @@ func (t *JSTypeFlowTracker) walkNode(node *sitter.Node, src []byte, pkg string) 
 			name := string(nameNode.Content(src))
 			line := int(node.StartPoint().Row) + 1
 			tn := t.getOrCreate(name)
-			tn.DefFile = filepath.Base("")
+			tn.DefFile = filepath.Base(filePath)
 			tn.DefLine = line
 		}
 
@@ -72,7 +72,7 @@ func (t *JSTypeFlowTracker) walkNode(node *sitter.Node, src []byte, pkg string) 
 			name := string(nameNode.Content(src))
 			line := int(node.StartPoint().Row) + 1
 			tn := t.getOrCreate(name)
-			tn.DefFile = filepath.Base("")
+			tn.DefFile = filepath.Base(filePath)
 			tn.DefLine = line
 
 			implements := childOfType(node, "implements_clause")
@@ -92,7 +92,7 @@ func (t *JSTypeFlowTracker) walkNode(node *sitter.Node, src []byte, pkg string) 
 	}
 
 	for i := 0; i < int(node.ChildCount()); i++ {
-		t.walkNode(node.Child(i), src, pkg)
+		t.walkNode(node.Child(i), src, pkg, filePath)
 	}
 }
 
