@@ -110,15 +110,22 @@ func (s *Store) FlushBatch(deleteKeys [][]byte, deletePrefixes [][]byte, puts []
 			}
 		}
 
+		var delKeys [][]byte
 		c := b.Cursor()
 		for _, prefix := range deletePrefixes {
 			for k, _ := c.Seek(prefix); k != nil && len(k) >= len(prefix); k, _ = c.Next() {
 				if string(k[:len(prefix)]) != string(prefix) {
 					break
 				}
-				if err := b.Delete(k); err != nil {
-					return err
-				}
+				kCopy := make([]byte, len(k))
+				copy(kCopy, k)
+				delKeys = append(delKeys, kCopy)
+			}
+		}
+
+		for _, k := range delKeys {
+			if err := b.Delete(k); err != nil {
+				return err
 			}
 		}
 
@@ -174,14 +181,20 @@ func (s *Store) DeleteWithPrefixes(prefixes [][]byte) error {
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte("rag"))
 		c := b.Cursor()
+		var delKeys [][]byte
 		for _, prefix := range prefixes {
 			for k, _ := c.Seek(prefix); k != nil && len(k) >= len(prefix); k, _ = c.Next() {
 				if string(k[:len(prefix)]) != string(prefix) {
 					break
 				}
-				if err := b.Delete(k); err != nil {
-					return err
-				}
+				kCopy := make([]byte, len(k))
+				copy(kCopy, k)
+				delKeys = append(delKeys, kCopy)
+			}
+		}
+		for _, k := range delKeys {
+			if err := b.Delete(k); err != nil {
+				return err
 			}
 		}
 		return nil
