@@ -107,6 +107,22 @@ func (fs *FlowStore) LoadTypeNode(typeName string) (*dataflow.TypeFlowNode, erro
 	return &node, nil
 }
 
+func (fs *FlowStore) LoadAllTypeNodes() (map[string]*dataflow.TypeFlowNode, error) {
+	raw, err := fs.kv.GetWithPrefix([]byte(flowTypePrefix))
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]*dataflow.TypeFlowNode, len(raw))
+	for _, data := range raw {
+		var node dataflow.TypeFlowNode
+		if err := json.Unmarshal(data, &node); err != nil {
+			return nil, fmt.Errorf("unmarshal type node: %w", err)
+		}
+		result[node.TypeName] = &node
+	}
+	return result, nil
+}
+
 func (fs *FlowStore) SaveEdge(edge *dataflow.DataFlowEdge) error {
 	data, err := json.Marshal(edge)
 	if err != nil {
@@ -267,6 +283,22 @@ func (fs *FlowStore) LoadMeta() (*dataflow.FlowMeta, error) {
 		return nil, fmt.Errorf("unmarshal flow meta: %w", err)
 	}
 	return &meta, nil
+}
+
+func (fs *FlowStore) LoadAllChains() (map[string]*dataflow.DefUseChain, error) {
+	raw, err := fs.kv.GetWithPrefix([]byte(flowChainPrefix))
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]*dataflow.DefUseChain, len(raw))
+	for _, data := range raw {
+		var chain dataflow.DefUseChain
+		if err := json.Unmarshal(data, &chain); err != nil {
+			return nil, fmt.Errorf("unmarshal chain: %w", err)
+		}
+		result[chain.Def.ID] = &chain
+	}
+	return result, nil
 }
 
 func (fs *FlowStore) LoadAllDefs() (map[string]*dataflow.VarDef, error) {
